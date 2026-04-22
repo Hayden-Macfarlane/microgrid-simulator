@@ -54,7 +54,7 @@ class BatteryModule:
             "is_online": self.is_online,
         }
 
-    def tick(self, base_deg_rate: float, reserve_unlocked: bool) -> None:
+    def tick(self, reserve_unlocked: bool) -> None:
         """Update module physics for one tick."""
         # 1. Thermal dynamics
         if getattr(self, '_last_draw_ratio', 0.0) > 0.8:
@@ -63,18 +63,21 @@ class BatteryModule:
             self.temperature = max(20.0, self.temperature - 0.5)
         self._last_draw_ratio = 0.0
 
-        # 2. DoD Degradation (uses exact float from settings)
-        if self.max_capacity > 0:
-            charge_pct = self.current_charge / self.max_capacity
-            if charge_pct < 0.20:
-                actual_deg = base_deg_rate / 100.0
-                # Accelerate if in emergency reserve
-                if reserve_unlocked and charge_pct <= 0.10:
-                    actual_deg *= 3.0
-                self.health_percentage = max(0.0, self.health_percentage - actual_deg)
-
         # Cap charge tightly to updated bounds
         self.current_charge = min(self.current_charge, self.max_capacity)
+
+    def apply_discharge_wear(self, amount_kwh: float, base_deg_rate: float, reserve_unlocked: bool) -> None:
+        """Degrade health based on energy discharged (1% loss per 100 full cycles)."""
+        if self._base_max_capacity > 0:
+            # Base logic: 100 full cycles = 1% health loss when rate is 1.0
+            wear = (amount_kwh / self._base_max_capacity) * (base_deg_rate / 100.0)
+            
+            # Deep Discharge Penalty: 3x wear if using the last 10% reserve
+            charge_pct = self.current_charge / self.max_capacity
+            if reserve_unlocked and charge_pct < 0.10:
+                wear *= 3.0
+            
+            self.health_percentage = max(0.0, self.health_percentage - wear)
 
 
 class BatteryGrid:
@@ -83,6 +86,7 @@ class BatteryGrid:
     def __init__(self, modules: Optional[List[BatteryModule]] = None) -> None:
         self.modules: List[BatteryModule] = modules if modules is not None else []
         self.reserve_unlocked: bool = False
+        self._last_deg_rate: float = 0.05  # Default fallback logic before first tick
 
     @property
     def current_charge(self) -> float:
@@ -101,18 +105,15 @@ class BatteryGrid:
         return sum(m.max_charge_rate for m in self.modules if m.is_online)
 
     def charge(self, amount_kw: float) -> float:
-        """Distribute charge proportionally amongst online modules."""
+        """Distribute charge greedily amongst online modules."""
         online = [m for m in self.modules if m.is_online]
         if not online or amount_kw <= 0:
-            return 0.0
-
-        total_headroom = sum(m.max_capacity - m.current_charge for m in online)
-        if total_headroom <= 0:
             return 0.0
 
         total_charged = 0.0
         remaining_to_charge = amount_kw
 
+        # Greedy iteration: fill each module as much as possible until debt is paid
         for m in online:
             if remaining_to_charge <= 0:
                 break
@@ -120,10 +121,8 @@ class BatteryGrid:
             if headroom <= 0:
                 continue
             
-            proportion = headroom / total_headroom
-            target_amount = amount_kw * proportion
-            
-            actual = min(target_amount, m.max_charge_rate, headroom)
+            # Take as much as module allows or as much as we have left
+            actual = min(remaining_to_charge, m.max_charge_rate, headroom)
             actual = max(0.0, actual)
             m.current_charge += actual
             total_charged += actual
@@ -132,7 +131,7 @@ class BatteryGrid:
         return total_charged
 
     def discharge(self, amount_kw: float) -> float:
-        """Distribute discharge proportionally amongst online modules."""
+        """Distribute discharge greedily amongst online modules."""
         online = [m for m in self.modules if m.is_online]
         if not online or amount_kw <= 0:
             return 0.0
@@ -144,10 +143,7 @@ class BatteryGrid:
             floor = 0.0 if self.reserve_unlocked else m.max_capacity * 0.10
             return max(0.0, m.current_charge - floor)
 
-        total_available = sum(get_available(m) for m in online)
-        if total_available <= 0:
-            return 0.0
-
+        # Greedy iteration: pull as much as possible from each module in sequence
         for m in online:
             if remaining_demand <= 0:
                 break
@@ -155,11 +151,12 @@ class BatteryGrid:
             if avail <= 0:
                 continue
             
-            proportion = avail / total_available
-            target_draw = amount_kw * proportion
-            
-            actual = min(target_draw, m.max_discharge_rate, avail)
+            # Take as much as limits allow
+            actual = min(remaining_demand, m.max_discharge_rate, avail)
             actual = max(0.0, actual)
+            
+            # Apply usage-based health degradation BEFORE subtracting charge
+            m.apply_discharge_wear(actual, getattr(self, '_last_deg_rate', 0.05), self.reserve_unlocked)
             
             m.current_charge -= actual
             m._last_draw_ratio = actual / m.base_max_discharge_rate
@@ -171,8 +168,9 @@ class BatteryGrid:
 
     def tick(self, degradation_rate: float = 0.05) -> None:
         """Update physical properties (temp, degradation) per tick."""
+        self._last_deg_rate = degradation_rate
         for m in self.modules:
-            m.tick(degradation_rate, self.reserve_unlocked)
+            m.tick(self.reserve_unlocked)
 
     def to_dict(self) -> dict:
         total_cap = self.max_capacity

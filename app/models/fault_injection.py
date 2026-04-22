@@ -42,8 +42,8 @@ class FaultInjector:
 
         # Fallback to probability if missing
         raw_prob = self.settings.base_failure_chance if self.settings else 1.0
-        # Convert the UI percentage (e.g. 1.0) to true decimal (0.01) then scale by 1000
-        prob = (raw_prob / 100.0) / 1000.0
+        # 1% settings = 1/100 probability per tick
+        prob = raw_prob / 100.0
         
         min_rep = self.settings.min_repair_ticks if self.settings else 5
         max_rep = self.settings.max_repair_ticks if self.settings else 15
@@ -70,7 +70,8 @@ class FaultInjector:
         for target in battery_grid.modules:
             if target.is_online:
                 if random.random() < prob:
-                    lost_health = deg_rate / 100.0
+                    # Injected fault results in a one-time health percentage drop
+                    lost_health = deg_rate
                     target.health_percentage = max(0.0, target.health_percentage - lost_health)
                     target.current_charge = min(target.current_charge, target.max_capacity)
                     fault = {
@@ -101,7 +102,7 @@ class FaultInjector:
         """Force at least one fault (used by the manual /grid/fault endpoint)."""
         if self.settings:
             saved_prob = self.settings.base_failure_chance
-            self.settings.base_failure_chance = 100000.0  # guarantees prob >= 1.0 under new math
+            self.settings.base_failure_chance = 100.0  # guarantees prob >= 1.0 under new math
             faults = self.inject(tick, sources, loads, battery_grid)
             self.settings.base_failure_chance = saved_prob
             return faults

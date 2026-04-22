@@ -70,9 +70,8 @@ class GridController:
         # Calculate essential baseline
         essential_demand = sum(l.current_draw for l in self.loads if l.is_active and getattr(l, 'is_essential', False))
         
-        # Determine battery state
+        # 3. Policy-Based Load Balancing (Shedding/Throttling based on Battery Charge)
         battery_pct = self.battery_grid.to_dict()["charge_pct"] / 100.0
-
         shed_threshold = self.settings.shed_threshold if self.settings else 0.10
         throttle_threshold = self.settings.throttle_threshold if self.settings else 0.20
 
@@ -82,81 +81,78 @@ class GridController:
             and not getattr(l, 'is_essential', False)
             and not getattr(l, 'is_manually_disabled', False)
         ]
-        max_non_essential_draw = sum(l.max_draw for l in non_essential_loads)
-
-        loads_shed: list[str] = []
-
+        
+        # --- APPLY POLICY ---
         if battery_pct < shed_threshold:
-            # Shed State: all non-essential loads dropped to 0
+            # SHED MODE: All non-essentials killed to preserve battery
             for load in non_essential_loads:
-                if load.current_draw > 0.0:
-                    loads_shed.append(load.name)
                 load.current_draw = 0.0
-            if loads_shed:
-                self._shed_log.append({
-                    "tick": self.current_tick,
-                    "loads_shed": loads_shed,
-                    "reason": f"Battery critically low ({battery_pct*100:.1f}%). Shedding all non-essential loads.",
-                })
         elif battery_pct < throttle_threshold:
-            # Throttle State: distribute remaining generation among non-essential loads
-            available_power = total_generation - essential_demand
-            if available_power <= 0:
+            # THROTTLE MODE: Dynamically matching loads to generation to stay at Net 0.0
+            available_for_non_essentials = max(0.0, total_generation - essential_demand)
+            total_max_non_essential = sum(l.max_draw for l in non_essential_loads)
+            
+            if total_max_non_essential > 0:
+                # Calculate ratio to match exactly the available generation
+                ratio = min(1.0, available_for_non_essentials / total_max_non_essential)
+                for load in non_essential_loads:
+                    load.current_draw = load.max_draw * ratio
+            else:
                 for load in non_essential_loads:
                     load.current_draw = 0.0
-            elif max_non_essential_draw > 0:
-                ratio = min(1.0, available_power / max_non_essential_draw)
-                for load in non_essential_loads:
-                    # Dynamically throttle
-                    load.current_draw = load.max_draw * ratio
         else:
-            # Normal State: non-essential loads draw max_draw
-            pass # update() already sets them to their calculated max_draw
+            # NORMAL MODE: Run non-essentials at 100% capacity
+            # (already set by load.update() above)
+            pass
 
-        # Re-calc overall demand
+        # 4. Energy balance (Battery as Buffer)
         total_demand = sum(l.current_draw for l in self.loads if getattr(l, "is_active", False))
-        surplus = total_generation - total_demand
+        net_power = total_generation - total_demand
 
         energy_stored = 0.0
         energy_discharged = 0.0
         remaining_deficit = 0.0
 
-        if surplus >= 0:
+        if net_power >= 0:
             # Excess power → charge battery
-            energy_stored = self.battery_grid.charge(surplus)
+            energy_stored = self.battery_grid.charge(net_power)
         else:
-            # Deficit → try to discharge battery
-            deficit = abs(surplus)
+            # Deficit → Drain battery buffer
+            deficit = abs(net_power)
             energy_discharged = self.battery_grid.discharge(deficit)
             remaining_deficit = deficit - energy_discharged
 
-            # If we STILL have a deficit (battery empty, throttling not enough because generation dropped too fast)
-            # Hard shed to balance equation
+            # 5. Last Resort Shedding (Blackout / Grid Redline)
+            # If battery is empty or bottlenecked, we MUST shed more to prevent negative Net Power
             if remaining_deficit > 0:
                 extra_loads_shed = []
+                # First try to kill non-essentials that survived the policy (if any)
                 for load in non_essential_loads:
-                    if remaining_deficit <= 0:
+                    if remaining_deficit <= 0.01: # allow tiny floating point error
                         break
                     if load.current_draw > 0:
-                        remaining_deficit -= load.current_draw
-                        load.current_draw = 0.0
+                        shed_amount = min(load.current_draw, remaining_deficit)
+                        load.current_draw -= shed_amount
+                        remaining_deficit -= shed_amount
                         extra_loads_shed.append(load.name)
-                if extra_loads_shed:
-                     self._shed_log.append({
-                        "tick": self.current_tick,
-                        "loads_shed": extra_loads_shed,
-                        "reason": "Insufficient generation and empty battery reserves.",
-                     })
-
-                # If STILL a deficit, cut essential loads (Total Blackout)
-                if remaining_deficit > 0:
+                
+                # Finally, cut essential loads if still imbalanced (True Blackout)
+                if remaining_deficit > 0.01:
                     for load in self.loads:
-                        if remaining_deficit <= 0:
+                        if remaining_deficit <= 0.01:
                             break
                         if load.is_active and getattr(load, 'is_essential', False) and load.current_draw > 0:
                             actual_cut = min(load.current_draw, remaining_deficit)
                             load.current_draw -= actual_cut
                             remaining_deficit -= actual_cut
+                            extra_loads_shed.append(load.name)
+
+                if extra_loads_shed:
+                     self._shed_log.append({
+                        "tick": self.current_tick,
+                        "loads_shed": list(set(extra_loads_shed)),
+                        "reason": "Insufficient generation and maxed-out battery reserves.",
+                     })
 
         # Check uptime logic
         essentials_powered = True
