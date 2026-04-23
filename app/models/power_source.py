@@ -7,6 +7,10 @@ from abc import ABC, abstractmethod
 import math
 import random
 import uuid
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.environment_engine import EnvironmentState
 
 
 class PowerSource(ABC):
@@ -22,9 +26,8 @@ class PowerSource(ABC):
         self.is_manually_disabled: bool = False
 
     @abstractmethod
-    def update(self, tick: int) -> None:
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
         """Recalculate current_output for the given simulation tick."""
-        ...
 
     def to_dict(self) -> dict:
         return {
@@ -54,7 +57,7 @@ class SolarPanel(PowerSource):
     def __init__(self, name: str = "Solar Array", max_output: float = 50.0) -> None:
         super().__init__(name, max_output)
 
-    def update(self, tick: int) -> None:
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:
             self.repair_ticks_remaining -= 1
             if self.repair_ticks_remaining == 0:
@@ -63,13 +66,10 @@ class SolarPanel(PowerSource):
         if not self.is_operational or self.is_manually_disabled:
             self.current_output = 0.0
             return
-        # Map tick to position in the day cycle
-        time_of_day = tick % self.DAY_TICKS
-        # Sinusoidal curve: 0 at midnight, peak at noon (tick 720)
-        solar_factor = max(0.0, math.sin(math.pi * time_of_day / self.DAY_TICKS))
-        # Add slight random cloud cover (±10 %)
+            
+        # Add slight random cloud cover (±10%)
         noise = random.uniform(0.90, 1.10)
-        self.current_output = self.max_output * solar_factor * noise
+        self.current_output = self.max_output * env.solar_efficiency * noise
 
 
 class WindTurbine(PowerSource):
@@ -81,19 +81,26 @@ class WindTurbine(PowerSource):
         super().__init__(name, max_output)
         self._wind_factor: float = 0.5  # 0.0 → 1.0
 
-    def update(self, tick: int) -> None:
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:
             self.repair_ticks_remaining -= 1
             if self.repair_ticks_remaining == 0:
                 self.is_operational = True
                 
+        # High Winds physical fault logic (0.5% chance per tick to suffer fault)
+        if env.current_event == "High Winds":
+            if random.random() < 0.005 and self.is_operational:
+                self.is_operational = False
+                self.repair_ticks_remaining = random.randint(60, 120)
+
         if not self.is_operational or self.is_manually_disabled:
             self.current_output = 0.0
             return
+            
         # Random walk bounded between 0 and 1
         self._wind_factor += random.uniform(-0.05, 0.05)
         self._wind_factor = max(0.0, min(1.0, self._wind_factor))
-        self.current_output = self.max_output * self._wind_factor
+        self.current_output = self.max_output * self._wind_factor * env.wind_efficiency
 
 
 class RTG(PowerSource):
@@ -107,7 +114,7 @@ class RTG(PowerSource):
     def __init__(self, name: str = "RTG Unit", max_output: float = 10.0) -> None:
         super().__init__(name, max_output)
 
-    def update(self, tick: int) -> None:
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:
             self.repair_ticks_remaining -= 1
             if self.repair_ticks_remaining == 0:

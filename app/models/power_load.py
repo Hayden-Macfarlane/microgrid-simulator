@@ -1,12 +1,15 @@
 """
 power_load.py — Abstract base class for all power-consuming loads
-and concrete implementations (LifeSupport, Heater, Lighting).
+and concrete implementations.
 """
 
 from abc import ABC, abstractmethod
 import random
 import uuid
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from app.models.environment_engine import EnvironmentState
 
 class PowerLoad(ABC):
     """Base class for any device that consumes power on the microgrid."""
@@ -27,7 +30,7 @@ class PowerLoad(ABC):
         self.is_manually_disabled: bool = False
 
     @abstractmethod
-    def update(self, tick: int) -> None:
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
         """Recalculate power_draw for the given simulation tick."""
         ...
 
@@ -46,24 +49,16 @@ class PowerLoad(ABC):
 
 
 # ---------------------------------------------------------------------------
-# Concrete implementations
+# Essential loads
 # ---------------------------------------------------------------------------
 
 class LifeSupport(PowerLoad):
-    """
-    Critical system — constant draw with minor fluctuations.
-    Always marked essential.
-    """
-
-    def __init__(
-        self,
-        name: str = "Life Support",
-        max_draw: float = 20.0,
-    ) -> None:
+    """Critical system — scaled by life_support_demand from environment."""
+    def __init__(self, name: str = "Life Support", max_draw: float = 20.0) -> None:
         super().__init__(name, max_draw, is_essential=True)
         self._base_draw = max_draw
 
-    def update(self, tick: int) -> None:
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:
             self.repair_ticks_remaining -= 1
             if self.repair_ticks_remaining == 0:
@@ -72,28 +67,18 @@ class LifeSupport(PowerLoad):
         if not self.is_active or self.is_manually_disabled:
             self.current_draw = 0.0
             return
-        # Slight variation ±5 %
-        self.max_draw = self._base_draw * random.uniform(0.95, 1.05)
+        
+        self.max_draw = self._base_draw * env.life_support_demand * random.uniform(0.95, 1.05)
         self.current_draw = self.max_draw
 
 
 class Heater(PowerLoad):
-    """
-    Heating system — draw increases during the simulated 'night' cycle
-    (colder periods). Non-essential; can be shed in emergencies.
-    """
-
-    DAY_TICKS = 1440
-
-    def __init__(
-        self,
-        name: str = "Habitat Heater",
-        max_draw: float = 15.0,
-    ) -> None:
-        super().__init__(name, max_draw, is_essential=False)
+    """Heating system — scales primarily with heater_demand (night and weather)."""
+    def __init__(self, name: str = "Habitat Heater", max_draw: float = 15.0) -> None:
+        super().__init__(name, max_draw, is_essential=True)
         self._base_draw = max_draw
 
-    def update(self, tick: int) -> None:
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:
             self.repair_ticks_remaining -= 1
             if self.repair_ticks_remaining == 0:
@@ -102,28 +87,41 @@ class Heater(PowerLoad):
         if not self.is_active or self.is_manually_disabled:
             self.current_draw = 0.0
             return
-        time_of_day = tick % self.DAY_TICKS
-        # Higher draw at night (tick 0 = midnight)
-        import math
-        night_factor = 1.0 + 0.5 * max(0.0, -math.sin(math.pi * time_of_day / self.DAY_TICKS) + 0.3)
-        self.max_draw = self._base_draw * night_factor
+            
+        self.max_draw = self._base_draw * env.heater_demand
         self.current_draw = self.max_draw
 
 
-class Lighting(PowerLoad):
-    """
-    Lighting system — non-essential, constant draw when active.
-    """
+# ---------------------------------------------------------------------------
+# Non-essential loads
+# ---------------------------------------------------------------------------
 
-    def __init__(
-        self,
-        name: str = "Interior Lighting",
-        max_draw: float = 5.0,
-    ) -> None:
+class Lighting(PowerLoad):
+    """Scales with night_activity_demand."""
+    def __init__(self, name: str = "Interior Lighting", max_draw: float = 5.0) -> None:
         super().__init__(name, max_draw, is_essential=False)
         self._base_draw = max_draw
 
-    def update(self, tick: int) -> None:
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
+        if self.repair_ticks_remaining > 0:
+            self.repair_ticks_remaining -= 1
+            if self.repair_ticks_remaining == 0:
+                self.is_active = True
+                
+        if not self.is_active or self.is_manually_disabled:
+            self.current_draw = 0.0
+            return
+        self.max_draw = self._base_draw * env.night_activity_demand
+        self.current_draw = self.max_draw
+
+
+class ExternalComms(PowerLoad):
+    """Constant non-essential load."""
+    def __init__(self, name: str = "External Communications", max_draw: float = 8.0) -> None:
+        super().__init__(name, max_draw, is_essential=False)
+        self._base_draw = max_draw
+
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:
             self.repair_ticks_remaining -= 1
             if self.repair_ticks_remaining == 0:
@@ -133,4 +131,80 @@ class Lighting(PowerLoad):
             self.current_draw = 0.0
             return
         self.max_draw = self._base_draw
+        self.current_draw = self.max_draw
+
+
+class WaterFiltration(PowerLoad):
+    """Constant non-essential load with minor noise."""
+    def __init__(self, name: str = "Water Filtration", max_draw: float = 12.0) -> None:
+        super().__init__(name, max_draw, is_essential=False)
+        self._base_draw = max_draw
+
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
+        if self.repair_ticks_remaining > 0:
+            self.repair_ticks_remaining -= 1
+            if self.repair_ticks_remaining == 0:
+                self.is_active = True
+                
+        if not self.is_active or self.is_manually_disabled:
+            self.current_draw = 0.0
+            return
+        self.max_draw = self._base_draw * random.uniform(0.9, 1.1)
+        self.current_draw = self.max_draw
+
+
+class ScienceLab(PowerLoad):
+    """Scales with day_activity_demand."""
+    def __init__(self, name: str = "Science Lab", max_draw: float = 25.0) -> None:
+        super().__init__(name, max_draw, is_essential=False)
+        self._base_draw = max_draw
+
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
+        if self.repair_ticks_remaining > 0:
+            self.repair_ticks_remaining -= 1
+            if self.repair_ticks_remaining == 0:
+                self.is_active = True
+                
+        if not self.is_active or self.is_manually_disabled:
+            self.current_draw = 0.0
+            return
+        self.max_draw = self._base_draw * env.day_activity_demand
+        self.current_draw = self.max_draw
+
+
+class RoverBay(PowerLoad):
+    """Scales with day_activity_demand."""
+    def __init__(self, name: str = "Rover Charging Bay", max_draw: float = 40.0) -> None:
+        super().__init__(name, max_draw, is_essential=False)
+        self._base_draw = max_draw
+
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
+        if self.repair_ticks_remaining > 0:
+            self.repair_ticks_remaining -= 1
+            if self.repair_ticks_remaining == 0:
+                self.is_active = True
+                
+        if not self.is_active or self.is_manually_disabled:
+            self.current_draw = 0.0
+            return
+        self.max_draw = self._base_draw * env.day_activity_demand
+        self.current_draw = self.max_draw
+
+
+class Extractors(PowerLoad):
+    """Scales with day_activity_demand."""
+    def __init__(self, name: str = "Resource Extractors", max_draw: float = 55.0) -> None:
+        super().__init__(name, max_draw, is_essential=False)
+        self._base_draw = max_draw
+
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
+        if self.repair_ticks_remaining > 0:
+            self.repair_ticks_remaining -= 1
+            if self.repair_ticks_remaining == 0:
+                self.is_active = True
+                
+        if not self.is_active or self.is_manually_disabled:
+            self.current_draw = 0.0
+            return
+        self.max_draw = self._base_draw * env.day_activity_demand
         self.current_draw = self.max_draw

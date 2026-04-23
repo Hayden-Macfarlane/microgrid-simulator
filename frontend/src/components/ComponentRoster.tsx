@@ -1,18 +1,19 @@
 "use client";
 
-import { SourceData, LoadData } from "@/types/grid";
+import { SourceData, LoadData, EnvironmentState } from "@/types/grid";
 import { api } from "@/lib/api";
 
 interface ComponentRosterProps {
   sources: SourceData[];
   loads: LoadData[];
+  environment?: EnvironmentState;
   onRefresh: () => void;
 }
 
 /* ------------------------------------------------------------------ */
 /* Source row                                                           */
 /* ------------------------------------------------------------------ */
-function SourceRow({ s, onRefresh }: { s: SourceData; onRefresh: () => void }) {
+function SourceRow({ s, environment, onRefresh }: { s: SourceData; environment?: EnvironmentState; onRefresh: () => void }) {
   const pct = s.max_output_kw > 0 ? (s.current_output_kw / s.max_output_kw) * 100 : 0;
   const typeIcon: Record<string, string> = {
     SolarPanel: "☀️",
@@ -42,6 +43,26 @@ function SourceRow({ s, onRefresh }: { s: SourceData; onRefresh: () => void }) {
           {s.is_manually_disabled && (
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-text-muted/20 text-text-muted uppercase tracking-wider">
               Override
+            </span>
+          )}
+          {environment && s.type === "SolarPanel" && environment.solar_efficiency < 0.1 && s.is_operational && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-bg-dark text-text-muted uppercase tracking-wider border border-border-subtle">
+              Night Mode (0%)
+            </span>
+          )}
+          {environment && s.type === "SolarPanel" && environment.current_event === "Dust Storm" && s.is_operational && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-amber/20 text-accent-amber uppercase tracking-wider">
+              Dust Storm (x0.1)
+            </span>
+          )}
+          {environment && s.type === "WindTurbine" && environment.current_event === "Dust Storm" && s.is_operational && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-amber/20 text-accent-amber uppercase tracking-wider">
+              Dust Storm (x1.5)
+            </span>
+          )}
+          {environment && s.type === "WindTurbine" && environment.current_event === "High Winds" && s.is_operational && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-red/20 text-accent-red uppercase tracking-wider">
+              High Winds (x2.0)
             </span>
           )}
         </div>
@@ -80,11 +101,16 @@ function SourceRow({ s, onRefresh }: { s: SourceData; onRefresh: () => void }) {
 /* ------------------------------------------------------------------ */
 /* Load row                                                             */
 /* ------------------------------------------------------------------ */
-function LoadRow({ l, onRefresh }: { l: LoadData; onRefresh: () => void }) {
+function LoadRow({ l, environment, onRefresh }: { l: LoadData; environment?: EnvironmentState; onRefresh: () => void }) {
   const typeIcon: Record<string, string> = {
     LifeSupport: "❤️",
     Heater: "🔥",
     Lighting: "💡",
+    ExternalComms: "📡",
+    WaterFiltration: "💧",
+    ScienceLab: "🔬",
+    RoverBay: "🚜",
+    Extractors: "⛏️",
   };
 
   const pct = l.max_draw_kw > 0 ? (l.current_draw_kw / l.max_draw_kw) * 100 : 0;
@@ -131,6 +157,21 @@ function LoadRow({ l, onRefresh }: { l: LoadData; onRefresh: () => void }) {
               OFFLINE (MANUAL)
             </span>
           )}
+          {environment && l.type === "Heater" && environment.current_event === "Cold Snap" && l.is_active && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-blue/20 text-accent-blue uppercase tracking-wider">
+              Cold Snap (x3.0)
+            </span>
+          )}
+          {environment && l.type === "LifeSupport" && environment.current_event === "Cold Snap" && l.is_active && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-blue/20 text-accent-blue uppercase tracking-wider">
+              Cold Snap (x3.0)
+            </span>
+          )}
+          {environment && (l.type === "ScienceLab" || l.type === "RoverBay" || l.type === "Extractors") && environment.day_activity_demand < 0.6 && l.is_active && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-bg-dark text-text-muted uppercase tracking-wider border border-border-subtle">
+              Night Operations
+            </span>
+          )}
         </div>
         {/* Draw indicator */}
         <div className="mt-1 h-1.5 rounded-full bg-border-subtle overflow-hidden">
@@ -167,7 +208,7 @@ function LoadRow({ l, onRefresh }: { l: LoadData; onRefresh: () => void }) {
 /* ------------------------------------------------------------------ */
 /* Main Component Roster                                                */
 /* ------------------------------------------------------------------ */
-export default function ComponentRoster({ sources, loads, onRefresh }: ComponentRosterProps) {
+export default function ComponentRoster({ sources, loads, environment, onRefresh }: ComponentRosterProps) {
   return (
     <section className="space-y-4 animate-fade-in">
       <h2 className="text-lg font-semibold tracking-wide uppercase text-text-secondary flex items-center gap-3">
@@ -184,7 +225,7 @@ export default function ComponentRoster({ sources, loads, onRefresh }: Component
           {sources.length === 0 ? (
             <p className="text-sm text-text-muted py-4 text-center">No sources connected</p>
           ) : (
-            sources.map((s) => <SourceRow key={s.id} s={s} onRefresh={onRefresh} />)
+            sources.map((s) => <SourceRow key={s.id} s={s} environment={environment} onRefresh={onRefresh} />)
           )}
         </div>
 
@@ -196,7 +237,7 @@ export default function ComponentRoster({ sources, loads, onRefresh }: Component
           {loads.length === 0 ? (
             <p className="text-sm text-text-muted py-4 text-center">No loads connected</p>
           ) : (
-            loads.map((l) => <LoadRow key={l.id} l={l} onRefresh={onRefresh} />)
+            loads.map((l) => <LoadRow key={l.id} l={l} environment={environment} onRefresh={onRefresh} />)
           )}
         </div>
       </div>

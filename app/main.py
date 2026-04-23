@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.models import (
     SolarPanel, WindTurbine, RTG,
     LifeSupport, Heater, Lighting,
+    ExternalComms, WaterFiltration, ScienceLab, RoverBay, Extractors,
     BatteryGrid, BatteryModule, FaultInjector,
 )
 from app.models.settings import SimulationSettings
@@ -66,20 +67,26 @@ def reset_grid():
     global sources, loads, battery_grid, settings, fault_injector, grid
     
     sources = [
-        SolarPanel(name="Solar Array Alpha", max_output=50.0),
-        WindTurbine(name="Wind Turbine Bravo", max_output=30.0),
-        RTG(name="RTG Charlie", max_output=10.0),
+        SolarPanel(name="Solar Array Alpha", max_output=250.0),
+        SolarPanel(name="Solar Array Bravo", max_output=250.0),
+        WindTurbine(name="Wind Turbine Charlie", max_output=50.0),
+        RTG(name="RTG Delta", max_output=15.0),
     ]
 
     loads = [
         LifeSupport(name="Life Support", max_draw=20.0),
         Heater(name="Habitat Heater", max_draw=15.0),
         Lighting(name="Interior Lighting", max_draw=5.0),
+        ExternalComms(name="External Communications", max_draw=8.0),
+        WaterFiltration(name="Water Filtration", max_draw=12.0),
+        ScienceLab(name="Science Lab", max_draw=25.0),
+        RoverBay(name="Rover Charging Bay", max_draw=40.0),
+        Extractors(name="Resource Extractors", max_draw=55.0),
     ]
 
     battery_grid = BatteryGrid(modules=[
-        BatteryModule(name="Substation Alpha", max_capacity=250.0, current_charge=125.0, max_charge_rate=25.0, max_discharge_rate=30.0),
-        BatteryModule(name="Substation Bravo", max_capacity=250.0, current_charge=125.0, max_charge_rate=25.0, max_discharge_rate=30.0),
+        BatteryModule(name="Substation Alpha", max_capacity=1500.0, current_charge=800.0, max_charge_rate=100.0, max_discharge_rate=100.0),
+        BatteryModule(name="Substation Bravo", max_capacity=1500.0, current_charge=800.0, max_charge_rate=100.0, max_discharge_rate=100.0),
     ])
 
     settings = SimulationSettings()
@@ -179,6 +186,11 @@ LOAD_CLASSES = {
     "LifeSupport": LifeSupport,
     "Heater": Heater,
     "Lighting": Lighting,
+    "ExternalComms": ExternalComms,
+    "WaterFiltration": WaterFiltration,
+    "ScienceLab": ScienceLab,
+    "RoverBay": RoverBay,
+    "Extractors": Extractors,
 }
 
 

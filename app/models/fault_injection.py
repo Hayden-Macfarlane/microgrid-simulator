@@ -42,8 +42,8 @@ class FaultInjector:
 
         # Fallback to probability if missing
         raw_prob = self.settings.base_failure_chance if self.settings else 1.0
-        # 1% settings = 1/100 probability per tick
-        prob = raw_prob / 100.0
+        # Divide by 1000.0 instead of 100.0 to effectively nerf base probability by 10x
+        prob = raw_prob / 1000.0
         
         min_rep = self.settings.min_repair_ticks if self.settings else 5
         max_rep = self.settings.max_repair_ticks if self.settings else 15

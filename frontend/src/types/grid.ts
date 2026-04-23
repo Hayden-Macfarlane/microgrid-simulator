@@ -64,6 +64,18 @@ export interface ShedEvent {
   reason: string;
 }
 
+export interface EnvironmentState {
+  time_of_day: number;
+  solar_efficiency: number;
+  wind_efficiency: number;
+  heater_demand: number;
+  life_support_demand: number;
+  day_activity_demand: number;
+  night_activity_demand: number;
+  current_event: string;
+  event_ticks_remaining: number;
+}
+
 export interface SimulationSettings {
   battery_degradation_rate: number;
   base_failure_chance: number;
@@ -86,4 +98,5 @@ export interface GridState {
   faults: FaultData;
   shed_log: ShedEvent[];
   settings: SimulationSettings;
+  environment: EnvironmentState;
 }

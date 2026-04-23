@@ -12,6 +12,8 @@ from app.models.power_load import PowerLoad
 from app.models.energy_storage import BatteryGrid
 from app.models.fault_injection import FaultInjector
 from app.models.settings import SimulationSettings
+from app.models.environment_engine import EnvironmentEngine
+from dataclasses import asdict
 
 
 class GridController:
@@ -36,10 +38,12 @@ class GridController:
         self.battery_grid = battery_grid
         self.settings = settings
         self.fault_injector = fault_injector or FaultInjector(settings=settings)
+        self.env_engine = EnvironmentEngine()
         self.current_tick: int = 0
         self.total_ticks: int = 0
         self.ticks_fully_powered_essentials: int = 0
         self._shed_log: list[dict] = []
+        self._current_env_state = self.env_engine.state
 
     # ------------------------------------------------------------------
     # Simulation loop
@@ -55,11 +59,14 @@ class GridController:
             self.current_tick, self.sources, self.loads, self.battery_grid,
         )
 
-        # 2. Update every source and load
+        # 2. Update environment
+        self._current_env_state = self.env_engine.tick(self.current_tick)
+
+        # 3. Update every source and load with env state
         for source in self.sources:
-            source.update(self.current_tick)
+            source.update(self.current_tick, self._current_env_state)
         for load in self.loads:
-            load.update(self.current_tick)
+            load.update(self.current_tick, self._current_env_state)
 
         # 3. Energy balance
         total_generation = sum(s.current_output for s in self.sources)
@@ -216,6 +223,7 @@ class GridController:
             "total_ticks": self.total_ticks,
             "global_uptime_pct": round(uptime_pct, 2),
             "settings": self.settings.to_dict() if self.settings else {},
+            "environment": asdict(self._current_env_state),
             "total_generation_kw": round(total_generation, 4),
             "total_demand_kw": round(total_demand, 4),
             "net_power_kw": round(total_generation - total_demand, 4),

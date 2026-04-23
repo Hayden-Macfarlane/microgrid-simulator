@@ -9,6 +9,7 @@ import CommandCenter from "@/components/CommandCenter";
 import FaultLog from "@/components/FaultLog";
 import SimulationSettingsPanel from "@/components/SimulationSettingsPanel";
 import BatterySubstation from "@/components/BatterySubstation";
+import EnvironmentPanel from "@/components/EnvironmentPanel";
 
 const MAX_HISTORY = 60;
 
@@ -129,10 +130,12 @@ export default function Dashboard() {
       </header>
 
       {/* Dashboard sections */}
+      <EnvironmentPanel state={state?.environment} />
       <HUD state={state} history={history} />
       <ComponentRoster
         sources={state?.sources || []}
         loads={state?.loads || []}
+        environment={state?.environment}
         onRefresh={fetchState}
       />
       {state?.battery_grid && (
