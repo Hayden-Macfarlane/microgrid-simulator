@@ -4,6 +4,8 @@ Provides REST endpoints to inspect and advance the simulation.
 """
 
 import asyncio
+import logging
+import traceback
 from pydantic import BaseModel
 from typing import Optional
 from fastapi import FastAPI, HTTPException
@@ -13,6 +15,7 @@ from app.models import (
     SolarPanel, WindTurbine, RTG,
     LifeSupport, Heater, Lighting,
     ExternalComms, WaterFiltration, ScienceLab, RoverBay, Extractors,
+    ActiveHeating, ActiveCooling, StaticLoad,
     BatteryGrid, BatteryModule, FaultInjector,
 )
 from app.models.settings import SimulationSettings
@@ -51,9 +54,23 @@ class SettingsUpdateRequest(BaseModel):
 # Bootstrap the simulation
 # -----------------------------------------------------------------------
 
-# -----------------------------------------------------------------------
-# Bootstrap the simulation
-# -----------------------------------------------------------------------
+app = FastAPI(
+    title="Microgrid Simulator",
+    description="Modular microgrid simulation engine with fault injection.",
+    version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "*",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Global state instances
 sources = []
@@ -62,43 +79,69 @@ battery_grid = None
 settings = None
 fault_injector = None
 grid = None
+backend_critical_fault = False
 
 def reset_grid():
-    global sources, loads, battery_grid, settings, fault_injector, grid
+    global sources, loads, battery_grid, settings, fault_injector, grid, backend_critical_fault
     
-    sources = [
-        SolarPanel(name="Solar Array Alpha", max_output=250.0),
-        SolarPanel(name="Solar Array Bravo", max_output=250.0),
-        WindTurbine(name="Wind Turbine Charlie", max_output=50.0),
-        RTG(name="RTG Delta", max_output=15.0),
-    ]
+    try:
+        sources = [
+            SolarPanel(id="s1", name="Solar Array Alpha", max_output=250.0),
+            SolarPanel(id="s2", name="Solar Array Bravo", max_output=250.0),
+            WindTurbine(id="w1", name="Wind Turbine Charlie", max_output=50.0),
+            RTG(id="r1", name="RTG Delta", max_output=15.0),
+        ]
 
-    loads = [
-        LifeSupport(name="Life Support", max_draw=20.0),
-        Heater(name="Habitat Heater", max_draw=15.0),
-        Lighting(name="Interior Lighting", max_draw=5.0),
-        ExternalComms(name="External Communications", max_draw=8.0),
-        WaterFiltration(name="Water Filtration", max_draw=12.0),
-        ScienceLab(name="Science Lab", max_draw=25.0),
-        RoverBay(name="Rover Charging Bay", max_draw=40.0),
-        Extractors(name="Resource Extractors", max_draw=55.0),
-    ]
+        loads = [
+            LifeSupport(id="l1", name="Life Support", max_draw=20.0),
+            Heater(id="l2", name="Habitat Heater", max_draw=15.0),
+            Lighting(id="l3", name="Interior Lighting", max_draw=5.0),
+            ExternalComms(id="l4", name="External Communications", max_draw=8.0),
+            WaterFiltration(id="l5", name="Water Filtration", max_draw=12.0),
+            ScienceLab(id="l6", name="Science Lab", max_draw=25.0),
+            RoverBay(id="l7", name="Rover Charging Bay", max_draw=40.0),
+            Extractors(id="l8", name="Resource Extractors", max_draw=55.0),
+            ActiveHeating(id="h1", name="Active Heating", max_draw=25.0),
+            ActiveCooling(id="c1", name="Active Cooling", max_draw=25.0),
+        ]
 
-    battery_grid = BatteryGrid(modules=[
-        BatteryModule(name="Substation Alpha", max_capacity=1500.0, current_charge=800.0, max_charge_rate=100.0, max_discharge_rate=100.0),
-        BatteryModule(name="Substation Bravo", max_capacity=1500.0, current_charge=800.0, max_charge_rate=100.0, max_discharge_rate=100.0),
-    ])
+        battery_grid = BatteryGrid(modules=[
+            BatteryModule(id="b1", name="Substation Alpha", max_capacity=1500.0, current_charge=800.0, max_charge_rate=100.0, max_discharge_rate=100.0),
+            BatteryModule(id="b2", name="Substation Bravo", max_capacity=1500.0, current_charge=800.0, max_charge_rate=100.0, max_discharge_rate=100.0),
+        ])
 
-    settings = SimulationSettings()
-    fault_injector = FaultInjector(settings=settings)
+        settings = SimulationSettings()
+        fault_injector = FaultInjector(settings=settings)
 
-    grid = GridController(
-        sources=sources,
-        loads=loads,
-        battery_grid=battery_grid,
-        fault_injector=fault_injector,
-        settings=settings,
-    )
+        grid = GridController(
+            sources=sources,
+            loads=loads,
+            battery_grid=battery_grid,
+            fault_injector=fault_injector,
+            settings=settings,
+        )
+        
+        backend_critical_fault = False
+        print("Backend: Grid simulation initialized successfully.")
+        
+    except Exception as e:
+        print("CRITICAL: Failed to initialize grid simulation!")
+        traceback.print_exc()
+        backend_critical_fault = True
+        
+        # Safe Fallback: Empty Grid
+        sources = []
+        loads = []
+        battery_grid = BatteryGrid(modules=[])
+        settings = SimulationSettings()
+        fault_injector = FaultInjector(settings=settings)
+        grid = GridController(
+            sources=sources,
+            loads=loads,
+            battery_grid=battery_grid,
+            fault_injector=fault_injector,
+            settings=settings,
+        )
 
 reset_grid()
 
@@ -116,32 +159,25 @@ async def _auto_tick_loop():
         await asyncio.sleep(1.0)
 
 # -----------------------------------------------------------------------
-# FastAPI app
-# -----------------------------------------------------------------------
-
-app = FastAPI(
-    title="Microgrid Simulator",
-    description="Modular microgrid simulation engine with fault injection.",
-    version="0.1.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# -----------------------------------------------------------------------
 # Endpoints
 # -----------------------------------------------------------------------
+
+@app.get("/health")
+def health_check():
+    """Diagnostic endpoint to verify API is alive."""
+    return {"status": "alive"}
 
 @app.get("/grid/state", summary="Get current grid state")
 def get_grid_state():
     """Return the full snapshot of the microgrid."""
-    return grid.get_state()
+    try:
+        state = grid.get_state()
+        state["backend_critical_fault"] = backend_critical_fault
+        return state
+    except Exception as e:
+        print("ERROR: Serialization of grid state failed!")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/grid/tick", summary="Advance simulation by 1 tick")
@@ -167,9 +203,9 @@ def trigger_fault():
 
 @app.post("/grid/restart", summary="Restart the grid simulation")
 def restart_simulation():
-    """Wipes the grid state and bootstraps it back to the initial starting values."""
+    """Reset the grid to its default state."""
     reset_grid()
-    return {"message": "Simulation restarted", "state": grid.get_state()}
+    return {"message": "Simulation reset success.", "state": grid.get_state()}
 
 
 # -----------------------------------------------------------------------
@@ -191,6 +227,9 @@ LOAD_CLASSES = {
     "ScienceLab": ScienceLab,
     "RoverBay": RoverBay,
     "Extractors": Extractors,
+    "ActiveHeating": ActiveHeating,
+    "ActiveCooling": ActiveCooling,
+    "StaticLoad": StaticLoad,
 }
 
 

@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 class PowerSource(ABC):
     """Base class for any device that generates power on the microgrid."""
 
-    def __init__(self, name: str, max_output: float) -> None:
-        self.id = str(uuid.uuid4().hex)[:8]
+    def __init__(self, name: str, max_output: float, id: str = None) -> None:
+        self.id = id if id else str(uuid.uuid4().hex)[:8]
         self.name = name
         self.max_output = max_output       # kW
         self.current_output: float = 0.0   # kW (set each tick)
@@ -54,8 +54,8 @@ class SolarPanel(PowerSource):
 
     DAY_TICKS = 1440  # minutes in 24 hours
 
-    def __init__(self, name: str = "Solar Array", max_output: float = 50.0) -> None:
-        super().__init__(name, max_output)
+    def __init__(self, name: str = "Solar Array", max_output: float = 50.0, id: str = None) -> None:
+        super().__init__(name, max_output, id=id)
 
     def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:
@@ -77,8 +77,8 @@ class WindTurbine(PowerSource):
     Output is stochastic — wind speed modelled with random walk drift.
     """
 
-    def __init__(self, name: str = "Wind Turbine", max_output: float = 30.0) -> None:
-        super().__init__(name, max_output)
+    def __init__(self, name: str = "Wind Turbine", max_output: float = 30.0, id: str = None) -> None:
+        super().__init__(name, max_output, id=id)
         self._wind_factor: float = 0.5  # 0.0 → 1.0
 
     def update(self, tick: int, env: 'EnvironmentState') -> None:
@@ -111,8 +111,8 @@ class RTG(PowerSource):
 
     HALF_LIFE_TICKS = 525_600 * 10  # ~10 years in minutes
 
-    def __init__(self, name: str = "RTG Unit", max_output: float = 10.0) -> None:
-        super().__init__(name, max_output)
+    def __init__(self, name: str = "RTG Unit", max_output: float = 10.0, id: str = None) -> None:
+        super().__init__(name, max_output, id=id)
 
     def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:

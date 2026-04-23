@@ -115,7 +115,7 @@ function LoadRow({ l, environment, onRefresh }: { l: LoadData; environment?: Env
 
   const pct = l.max_draw_kw > 0 ? (l.current_draw_kw / l.max_draw_kw) * 100 : 0;
   
-  const isThrottled = l.is_active && !l.is_manually_disabled && l.current_draw_kw > 0 && l.current_draw_kw < l.max_draw_kw;
+  const isThrottled = l.is_active && !l.is_manually_disabled && l.is_grid_throttled;
   const isShed = l.is_active && !l.is_manually_disabled && l.current_draw_kw === 0;
 
   const handleToggle = async () => {

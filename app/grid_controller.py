@@ -66,13 +66,13 @@ class GridController:
         for source in self.sources:
             source.update(self.current_tick, self._current_env_state)
         for load in self.loads:
+            load.is_grid_throttled = False
             load.update(self.current_tick, self._current_env_state)
 
         # 3. Energy balance
         total_generation = sum(s.current_output for s in self.sources)
         
-        deg_rate = self.settings.battery_degradation_rate if self.settings else 0.05
-        self.battery_grid.tick(degradation_rate=deg_rate)
+        # (Battery grid tick moved to end to capture HVAC power state)
         
         # Calculate essential baseline
         essential_demand = sum(l.current_draw for l in self.loads if l.is_active and getattr(l, 'is_essential', False))
@@ -104,9 +104,12 @@ class GridController:
                 ratio = min(1.0, available_for_non_essentials / total_max_non_essential)
                 for load in non_essential_loads:
                     load.current_draw = load.max_draw * ratio
+                    if ratio < 1.0:
+                        load.is_grid_throttled = True
             else:
                 for load in non_essential_loads:
                     load.current_draw = 0.0
+                    load.is_grid_throttled = True
         else:
             # NORMAL MODE: Run non-essentials at 100% capacity
             # (already set by load.update() above)
@@ -173,6 +176,18 @@ class GridController:
 
         if essentials_powered:
             self.ticks_fully_powered_essentials += 1
+
+        # 6. Thermal Framework & Battery Physics
+        heating_active = any(l.name == "Active Heating" and l.current_draw > 0 for l in self.loads)
+        cooling_active = any(l.name == "Active Cooling" and l.current_draw > 0 for l in self.loads)
+        
+        deg_rate = self.settings.battery_degradation_rate if self.settings else 0.05
+        self.battery_grid.tick(
+            degradation_rate=deg_rate,
+            env_temp=self._current_env_state.current_temperature,
+            heating_active=heating_active,
+            cooling_active=cooling_active
+        )
 
         return self.get_state()
 

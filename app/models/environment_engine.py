@@ -16,6 +16,8 @@ class EnvironmentState:
     night_activity_demand: float = 1.0 # Scalar (Peaks during night)
     current_event: str = "Clear Skies"
     event_ticks_remaining: int = 0
+    current_temperature: float = 20.0
+    ambient_temperature: float = 20.0
 
 class EnvironmentEngine:
     """Manages global environmental factors like time of day and weather events."""
@@ -44,6 +46,12 @@ class EnvironmentEngine:
         night_factor = 1.0 + 0.5 * max(0.0, -math.sin(math.pi * (t - 6.0) / 12.0) + 0.3)
         self.state.heater_demand = night_factor
         self.state.night_activity_demand = night_factor
+
+        # current_temperature: Peak 35 at 12:00, Bottom -15 at 00:00
+        # Formula: 10 + 25 * sin(...) -> sin(-pi/2)=-1 @ 0h -> -15, sin(pi/2)=1 @ 12h -> 35
+        temp = 10.0 + 25.0 * math.sin(math.pi * (t - 6.0) / 12.0)
+        self.state.current_temperature = temp
+        self.state.ambient_temperature = temp
 
         # Reset defaults that might be overridden by events
         self.state.wind_efficiency = 1.0

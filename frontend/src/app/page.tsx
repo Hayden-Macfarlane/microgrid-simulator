@@ -15,6 +15,7 @@ const MAX_HISTORY = 60;
 
 export default function Dashboard() {
   const [state, setState] = useState<GridState | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [autoTick, setAutoTick] = useState(false);
   const [history, setHistory] = useState<
     { tick: number; gen: number; demand: number; net: number }[]
@@ -26,6 +27,7 @@ export default function Dashboard() {
     try {
       const s = await api.getState();
       setState(s);
+      setError(null);
       setHistory((prev) => {
         const entry = {
           tick: s.tick,
@@ -38,8 +40,9 @@ export default function Dashboard() {
         const next = [...prev, entry];
         return next.length > MAX_HISTORY ? next.slice(-MAX_HISTORY) : next;
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch grid state:", err);
+      setError(err.message || "Failed to connect to backend");
     }
   }, []);
 
@@ -128,6 +131,28 @@ export default function Dashboard() {
           </span>
         </div>
       </header>
+
+      {/* Error State */}
+      {error && (
+        <div className="bg-accent-red/10 border border-accent-red/20 rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="w-10 h-10 rounded-full bg-accent-red/20 flex items-center justify-center text-accent-red">
+            ⚠️
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-bold text-accent-red">System Connection Error</h3>
+            <p className="text-xs text-text-muted mt-0.5">
+              CRITICAL: Cannot connect to backend at <code className="bg-black/20 px-1 rounded">http://127.0.0.1:8000</code>. 
+              Details: {error}
+            </p>
+          </div>
+          <button 
+            onClick={() => fetchState()}
+            className="px-4 py-2 bg-accent-red text-white text-xs font-bold rounded-lg hover:brightness-110 transition-all active:scale-95"
+          >
+            Retry Connection
+          </button>
+        </div>
+      )}
 
       {/* Dashboard sections */}
       <EnvironmentPanel state={state?.environment} />

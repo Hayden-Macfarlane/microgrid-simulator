@@ -21,6 +21,7 @@ export interface LoadData {
   is_active: boolean;
   repair_ticks_remaining: number;
   is_manually_disabled: boolean;
+  is_grid_throttled: boolean;
 }
 
 export interface BatteryModuleData {
