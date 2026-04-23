@@ -1,0 +1,11 @@
+# Python Cache
+__pycache__/
+*.pyc
+
+# Next.js / Node
+node_modules/
+.next/
+
+# Virtual Environments
+.venv/
+venv/
