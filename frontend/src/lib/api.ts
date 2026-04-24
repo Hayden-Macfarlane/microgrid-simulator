@@ -12,7 +12,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail || `API error ${res.status}`);
+      const errorMsg = body.message || body.detail || `API error ${res.status}`;
+      // Attach the full error body to the Error object if possible
+      const error = new Error(errorMsg) as any;
+      error.type = body.type;
+      error.status = res.status;
+      error.details = body.details;
+      error.traceback = body.traceback;
+      throw error;
     }
     return res.json();
   } catch (error) {
@@ -112,5 +119,16 @@ export const api = {
     request<{ message: string }>("/grid/solar/clean", {
       method: "POST",
       body: JSON.stringify({ id }),
+    }),
+
+  toggleGridForming: (moduleId: string) =>
+    request<{ message: string; is_grid_forming: boolean }>(`/grid/battery/module/${moduleId}/toggle-grid-forming`, {
+      method: "POST",
+    }),
+
+  setUFLSTier: (loadId: string, tier: number) =>
+    request<{ message: string }>("/grid/load/ufls-tier", {
+      method: "POST",
+      body: JSON.stringify({ id: loadId, tier }),
     }),
 };

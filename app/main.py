@@ -7,12 +7,14 @@ import asyncio
 import logging
 import traceback
 from pydantic import BaseModel
-from typing import Optional
-from fastapi import FastAPI, HTTPException
+from typing import Optional, List
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.models import (
-    SolarPanel, WindTurbine, RTG,
+    SolarPanel, WindTurbine, RTG, KineticFlywheel,
     LifeSupport, Heater, Lighting,
     ExternalComms, WaterFiltration, ScienceLab, RoverBay, Extractors,
     EngineeringFabricationHub,
@@ -52,11 +54,14 @@ class SettingsUpdateRequest(BaseModel):
     shed_threshold: float
     throttle_threshold: float
     user_soc_min: float
-    user_soc_min: float
     user_soc_max: float
 
 class IdRequest(BaseModel):
     id: str
+
+class SetUFLSTierRequest(BaseModel):
+    id: str
+    tier: int
 
 # -----------------------------------------------------------------------
 # Bootstrap the simulation
@@ -80,6 +85,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# -----------------------------------------------------------------------
+# Global Exception Handlers
+# -----------------------------------------------------------------------
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"GLOBAL CRASH: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "traceback": traceback.format_exc()
+        },
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logging.error(f"VALIDATION ERROR: {exc}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status": "error",
+            "type": "ValidationError",
+            "message": "Pydantic validation failed for incoming request data.",
+            "details": exc.errors()
+        },
+    )
+
 # Global state instances
 sources = []
 loads = []
@@ -98,6 +134,7 @@ def reset_grid():
             SolarPanel(id="s2", name="Solar Array Bravo", max_output=250.0),
             WindTurbine(id="w1", name="Wind Turbine Charlie", max_output=50.0),
             RTG(id="r1", name="RTG Delta", max_output=15.0),
+            KineticFlywheel(id="f1", name="High-Mass Flywheel Omega", max_output=0.0),
         ]
 
         loads = [
@@ -225,6 +262,7 @@ SOURCE_CLASSES = {
     "SolarPanel": SolarPanel,
     "WindTurbine": WindTurbine,
     "RTG": RTG,
+    "KineticFlywheel": KineticFlywheel,
 }
 
 LOAD_CLASSES = {
@@ -330,6 +368,24 @@ def toggle_battery_module(module_id: str):
             m.is_online = not m.is_online
             return {"message": "Module toggled", "is_online": m.is_online}
     raise HTTPException(status_code=404, detail="Module not found")
+
+
+@app.post("/grid/battery/module/{module_id}/toggle-grid-forming", summary="Toggle Grid-Forming mode")
+def toggle_grid_forming(module_id: str):
+    for m in grid.battery_grid.modules:
+        if m.id == module_id:
+            m.is_grid_forming = not m.is_grid_forming
+            return {"message": "Grid-forming toggled", "is_grid_forming": m.is_grid_forming}
+    raise HTTPException(status_code=404, detail="Module not found")
+
+
+@app.post("/grid/load/ufls-tier", summary="Set UFLS Tier for a load")
+def set_ufls_tier(req: SetUFLSTierRequest):
+    for l in grid.loads:
+        if l.id == req.id:
+            l.ufls_tier = req.tier
+            return {"message": f"UFLS Tier set to {req.tier} for {l.name}"}
+    raise HTTPException(status_code=404, detail="Load not found")
 
 
 # -----------------------------------------------------------------------

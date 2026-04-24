@@ -24,6 +24,7 @@ class PowerSource(ABC):
         self.is_operational: bool = True
         self.repair_ticks_remaining: int = 0
         self.is_manually_disabled: bool = False
+        self.inertia_constant: float = 0.0  # s-scale (e.g., 5.0 for rotating mass)
 
     @abstractmethod
     def update(self, tick: int, env: 'EnvironmentState') -> None:
@@ -44,6 +45,7 @@ class PowerSource(ABC):
             d["dust_coverage"] = round(self.dust_coverage, 4)
         if hasattr(self, 'is_cleaning'):
             d["is_cleaning"] = self.is_cleaning
+        d["inertia_constant"] = self.inertia_constant
         return d
 
 
@@ -63,6 +65,7 @@ class SolarPanel(PowerSource):
         super().__init__(name, max_output, id=id)
         self.dust_coverage: float = 0.0  # 0.0 to 100.0
         self.is_cleaning: bool = False
+        self.inertia_constant: float = 0.0 # Digital inverter
 
     def degrade_solar_efficiency(self, is_storm: bool = False) -> None:
         """Increases dust coverage. Base rate 0.01% per tick, 10x during storm."""
@@ -97,6 +100,7 @@ class WindTurbine(PowerSource):
     def __init__(self, name: str = "Wind Turbine", max_output: float = 30.0, id: str = None) -> None:
         super().__init__(name, max_output, id=id)
         self._wind_factor: float = 0.5  # 0.0 → 1.0
+        self.inertia_constant: float = 5.0 # Rotating mass
 
     def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:
@@ -143,3 +147,27 @@ class RTG(PowerSource):
         # Exponential decay (barely noticeable over short sims)
         decay = 0.5 ** (tick / self.HALF_LIFE_TICKS)
         self.current_output = self.max_output * decay
+
+
+class KineticFlywheel(PowerSource):
+    """
+    High-inertia mechanical stabilizer.
+    Provides massive stability but consumes power to stay at speed.
+    """
+    def __init__(self, name: str = "Kinetic Flywheel", max_output: float = 0.0, id: str = None) -> None:
+        super().__init__(name, max_output, id=id)
+        self.inertia_constant = 15.0
+        self.parasitic_draw = 5.0 # kW
+
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
+        if self.repair_ticks_remaining > 0:
+            self.repair_ticks_remaining -= 1
+            if self.repair_ticks_remaining == 0:
+                self.is_operational = True
+        
+        if not self.is_operational or self.is_manually_disabled:
+            self.current_output = 0.0
+            return
+            
+        # Kinetic flywheel consumes power to maintain momentum
+        self.current_output = -self.parasitic_draw

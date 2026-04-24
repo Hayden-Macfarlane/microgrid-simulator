@@ -30,6 +30,7 @@ class PowerLoad(ABC):
         self.repair_ticks_remaining: int = 0
         self.is_manually_disabled: bool = False
         self.is_grid_throttled: bool = False
+        self.ufls_tier: int = 0  # 0=Safe, 1, 2, 3 (High priority to shed)
 
     @abstractmethod
     def update(self, tick: int, env: 'EnvironmentState') -> None:
@@ -48,6 +49,7 @@ class PowerLoad(ABC):
             "repair_ticks_remaining": self.repair_ticks_remaining,
             "is_manually_disabled": self.is_manually_disabled,
             "is_grid_throttled": self.is_grid_throttled,
+            "ufls_tier": self.ufls_tier,
         }
 
 

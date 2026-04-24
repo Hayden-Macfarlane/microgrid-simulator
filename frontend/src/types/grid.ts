@@ -24,6 +24,7 @@ export interface LoadData {
   repair_ticks_remaining: number;
   is_manually_disabled: boolean;
   is_grid_throttled: boolean;
+  ufls_tier: number;
 }
 
 export interface BatteryModuleData {
@@ -44,6 +45,8 @@ export interface BatteryModuleData {
   energy_debt: number;
   is_scrapping: boolean;
   scrap_progress: number;
+  is_grid_forming: boolean;
+  inertia_constant: number;
 }
 
 export interface BatteryGridData {
@@ -113,4 +116,6 @@ export interface GridState {
   settings: SimulationSettings;
   environment: EnvironmentState;
   material_credits: number;
+  grid_frequency: number;
+  total_inertia: number;
 }

@@ -12,6 +12,71 @@ import {
   CartesianGrid,
 } from "recharts";
 
+/* ------------------------------------------------------------------ */
+/* Frequency Meter (Digital stable grid oscillator)                   */
+/* ------------------------------------------------------------------ */
+function FrequencyMeter({ 
+  frequency, 
+  inertia 
+}: { 
+  frequency: number; 
+  inertia: number; 
+}) {
+  const isCritical = (frequency < 59.5 && frequency > 0) || (frequency === 0);
+  const isWarning = frequency < 59.8 || frequency > 60.2;
+  
+  const color = isCritical ? "var(--accent-red)" : isWarning ? "var(--accent-amber)" : "var(--accent-cyan)";
+  const statusText = isCritical ? "CRITICAL INSTABILITY" : isWarning ? "FREQUENCY DEVIATION" : "GRID STABLE";
+
+  return (
+    <div className={`card p-4 flex flex-col gap-2 min-w-[200px] border-2 transition-all duration-300 ${isCritical ? 'border-accent-red animate-pulse' : 'border-transparent'}`}
+         style={{ background: isCritical ? 'rgba(239, 68, 68, 0.05)' : 'rgba(255, 255, 255, 0.02)' }}>
+      <div className="flex justify-between items-center">
+        <span className="text-[11px] uppercase tracking-widest text-text-muted font-mono">
+          Grid Frequency
+        </span>
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${isCritical ? 'bg-accent-red/20 border-accent-red text-accent-red' : 'bg-accent-cyan/10 border-accent-cyan/30 text-accent-cyan'}`}>
+          {frequency ? frequency.toFixed(3) : '0.000'} Hz
+        </span>
+      </div>
+
+      <div className="flex items-center gap-4 mt-1">
+        <div className="flex-1 flex flex-col items-center">
+           <span className="text-3xl font-bold font-mono tracking-tighter" style={{ color, textShadow: isCritical ? `0 0 10px ${color}` : 'none' }}>
+             {frequency ? frequency.toFixed(2) : '0.00'}
+             <span className="text-sm ml-1 text-text-muted">Hz</span>
+           </span>
+        </div>
+        
+        <div className="w-px h-10 bg-border-subtle" />
+
+        <div className="flex-1 flex flex-col justify-center">
+           <span className="text-[10px] uppercase text-text-muted font-mono">Inertia</span>
+           <span className="text-lg font-bold text-text-primary">{inertia ? inertia.toFixed(1) : '0.0'} <span className="text-[10px] text-text-muted">s</span></span>
+        </div>
+      </div>
+
+      <div className="mt-1 space-y-1">
+        <div className="flex justify-between text-[9px] uppercase font-mono text-text-muted">
+           <span>{statusText}</span>
+           <span>Nominal: 60.00 Hz</span>
+        </div>
+        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden relative">
+           <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/20 z-10" />
+           <div 
+             className={`h-full transition-all duration-700 ${color === 'var(--accent-cyan)' ? 'bg-accent-cyan' : isWarning ? 'bg-accent-amber' : 'bg-accent-red'}`}
+             style={{ 
+               width: `${Math.min(100, Math.abs(frequency - 60) * 20)}%`,
+               marginLeft: frequency < 60 ? 'auto' : '50%',
+               marginRight: frequency < 60 ? '50%' : 'auto'
+             }}
+           />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface HUDProps {
   state: GridState | null;
   history: { tick: number; gen: number; demand: number; net: number }[];
@@ -208,6 +273,11 @@ export default function HUD({ state, history }: HUDProps) {
           charge={state.battery_grid.current_charge_kwh}
           max={state.battery_grid.max_capacity_kwh}
           netPower={state.net_power_kw}
+        />
+
+        <FrequencyMeter 
+          frequency={state.grid_frequency}
+          inertia={state.total_inertia}
         />
 
         <div className="flex flex-wrap gap-3 flex-1">

@@ -19,6 +19,7 @@ function SourceRow({ s, environment, onRefresh }: { s: SourceData; environment?:
     SolarPanel: "☀️",
     WindTurbine: "💨",
     RTG: "⚛️",
+    KineticFlywheel: "🎡",
   };
 
   const handleToggle = async () => {
@@ -170,6 +171,11 @@ function LoadRow({ l, environment, onRefresh }: { l: LoadData; environment?: Env
     onRefresh();
   };
 
+  const handleTierChange = async (tier: number) => {
+    await api.setUFLSTier(l.id, tier);
+    onRefresh();
+  };
+
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-bg-card-hover transition-colors animate-slide-in">
       {/* Icon */}
@@ -219,6 +225,15 @@ function LoadRow({ l, environment, onRefresh }: { l: LoadData; environment?: Env
               Night Operations
             </span>
           )}
+          {l.ufls_tier > 0 && (
+            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider border ${
+              l.ufls_tier === 1 ? 'border-accent-red/40 text-accent-red' : 
+              l.ufls_tier === 2 ? 'border-accent-amber/40 text-accent-amber' : 
+              'border-text-muted/40 text-text-muted'
+            }`}>
+              Tier {l.ufls_tier}
+            </span>
+          )}
         </div>
         {/* Draw indicator */}
         <div className="mt-1 h-1.5 rounded-full bg-border-subtle overflow-hidden">
@@ -232,6 +247,21 @@ function LoadRow({ l, environment, onRefresh }: { l: LoadData; environment?: Env
             }}
           />
         </div>
+      </div>
+
+      {/* Tier Selector */}
+      <div className="flex flex-col gap-1 mr-2 min-w-[70px]">
+        <span className="text-[8px] uppercase text-text-muted/60 font-bold text-center">UFLS Tier</span>
+        <select
+          value={l.ufls_tier}
+          onChange={(e) => handleTierChange(parseInt(e.target.value))}
+          className="bg-bg-dark text-[10px] text-text-muted border border-border-subtle rounded px-1 py-0.5 cursor-pointer hover:border-accent-cyan transition-colors appearance-none text-center"
+        >
+          <option value={0}>Safe</option>
+          <option value={1}>T1</option>
+          <option value={2}>T2</option>
+          <option value={3}>T3</option>
+        </select>
       </div>
 
       {/* Toggle */}

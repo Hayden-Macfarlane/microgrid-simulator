@@ -134,23 +134,45 @@ export default function Dashboard() {
 
       {/* Error State */}
       {error && (
-        <div className="bg-accent-red/10 border border-accent-red/20 rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className="w-10 h-10 rounded-full bg-accent-red/20 flex items-center justify-center text-accent-red">
-            ⚠️
+        <div className="bg-accent-red/10 border border-accent-red/20 rounded-xl p-6 flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-accent-red/20 flex items-center justify-center text-accent-red text-xl">
+              ⚠️
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-accent-red">System Critical Error</h3>
+              <p className="text-sm text-text-secondary mt-1">
+                The grid simulation backend has encountered a fatal exception or validation mismatch.
+              </p>
+            </div>
+            <button 
+              onClick={() => fetchState()}
+              className="px-6 py-2.5 bg-accent-red text-white text-sm font-bold rounded-lg hover:brightness-110 transition-all active:scale-95 shadow-lg shadow-accent-red/20"
+            >
+              Retry Connection
+            </button>
           </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-bold text-accent-red">System Connection Error</h3>
-            <p className="text-xs text-text-muted mt-0.5">
-              CRITICAL: Cannot connect to backend at <code className="bg-black/20 px-1 rounded">http://127.0.0.1:8000</code>. 
-              Details: {error}
-            </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="card p-4 bg-black/40 border-accent-red/20">
+              <span className="text-[10px] uppercase font-mono text-accent-red/60 block mb-1">Error Details</span>
+              <p className="text-xs font-mono text-text-primary break-all">
+                {error}
+              </p>
+            </div>
+            <div className="card p-4 bg-black/40 border-accent-red/20">
+              <span className="text-[10px] uppercase font-mono text-accent-red/60 block mb-1">Backend Hub</span>
+              <p className="text-xs font-mono text-text-secondary italic">
+                Check terminal for full stack trace.
+              </p>
+            </div>
           </div>
-          <button 
-            onClick={() => fetchState()}
-            className="px-4 py-2 bg-accent-red text-white text-xs font-bold rounded-lg hover:brightness-110 transition-all active:scale-95"
-          >
-            Retry Connection
-          </button>
+
+          {(state as any)?.backend_critical_fault && (
+             <div className="p-3 bg-accent-red/20 border border-accent-red/30 rounded-lg text-[10px] uppercase font-bold text-accent-red text-center tracking-widest animate-pulse">
+                Backend Hard Fault Detected — Manual Reset Required
+             </div>
+          )}
         </div>
       )}
 

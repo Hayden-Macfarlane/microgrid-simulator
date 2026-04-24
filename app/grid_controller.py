@@ -46,6 +46,8 @@ class GridController:
         self._current_env_state = self.env_engine.state
         self._last_line_loss: float = 0.0
         self.material_credits: float = 0.0
+        self.grid_frequency: float = 60.0
+        self.total_inertia: float = 0.0
 
     # ------------------------------------------------------------------
     # Simulation loop
@@ -257,6 +259,70 @@ class GridController:
             heating_active=heating_active,
             cooling_active=cooling_active
         )
+        
+        # 7. Grid Frequency & Inertia Physics
+        # Total inertia = sum of online sources + sum of online batteries
+        online_sources = [s for s in self.sources if s.is_operational and not s.is_manually_disabled]
+        online_batteries = [m for m in self.battery_grid.modules if m.is_online]
+        
+        self.total_inertia = sum(s.inertia_constant for s in online_sources) + \
+                             sum(m.inertia_constant for m in online_batteries)
+        
+        # Avoid division by zero
+        m_grid = max(0.001, self.total_inertia)
+        
+        # Delta P = Pgen - Pload (Net Power before battery buffering)
+        delta_p = total_generation - total_demand - line_loss
+        
+        # Tuning constant k = 0.05
+        k = 0.05
+        delta_f = k * (delta_p / m_grid)
+        self.grid_frequency += delta_f
+        
+        # Clamping frequency for stability extremes
+        self.grid_frequency = max(40.0, min(80.0, self.grid_frequency))
+
+        # 8. Automatic Under-Frequency Load Shedding (UFLS)
+        # Smart Tiered Shedding: 0=Safe, 1, 2, 3 (High priority to shed)
+        ufls_triggered = False
+        shed_tier = None
+        
+        if self.grid_frequency < 59.8:
+            shed_tier = 3
+        if self.grid_frequency < 59.5:
+            shed_tier = 2
+        if self.grid_frequency < 59.0:
+            shed_tier = 1
+            
+        if shed_tier is not None:
+            # Shed all loads in this tier AND higher tiers
+            loads_to_shed = [l for l in self.loads if getattr(l, 'ufls_tier', 0) >= shed_tier and l.is_active]
+            if loads_to_shed:
+                ufls_triggered = True
+                shed_names = []
+                for load in loads_to_shed:
+                    load.is_active = False
+                    load.is_manually_disabled = True # Hard kill for stability
+                    shed_names.append(load.name)
+                
+                self._shed_log.append({
+                    "tick": self.current_tick,
+                    "loads_shed": shed_names,
+                    "reason": f"UFLS Tier {shed_tier} Triggered at {self.grid_frequency:.2f} Hz",
+                })
+
+        # 9. Complete Grid Blackout
+        if self.grid_frequency < 58.0:
+            for l in self.loads:
+                l.is_active = False
+            for s in self.sources:
+                s.is_operational = False
+            self.grid_frequency = 0.0
+            self._shed_log.append({
+                "tick": self.current_tick,
+                "loads_shed": ["COMPLETE GRID BLACKOUT"],
+                "reason": "Frequency collapse below 58.0 Hz.",
+            })
 
         return self.get_state()
 
@@ -318,4 +384,6 @@ class GridController:
             "faults": self.fault_injector.to_dict(),
             "shed_log": self._shed_log,
             "material_credits": round(self.material_credits, 2),
+            "grid_frequency": round(self.grid_frequency, 3),
+            "total_inertia": round(self.total_inertia, 2),
         }

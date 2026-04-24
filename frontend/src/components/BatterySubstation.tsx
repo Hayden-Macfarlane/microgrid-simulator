@@ -16,6 +16,11 @@ export default function BatterySubstation({ batteryGrid, onRefresh }: BatterySub
     onRefresh();
   };
 
+  const handleToggleGridForming = async (id: string) => {
+    await api.toggleGridForming(id);
+    onRefresh();
+  };
+
   const handleRepair = async (id: string) => {
     try {
       await api.repairBattery(id);
@@ -100,9 +105,16 @@ export default function BatterySubstation({ batteryGrid, onRefresh }: BatterySub
                       : "bg-accent-red/20 text-accent-red hover:bg-accent-red/30"
                   }`}
                 >
-                  {m.is_destroyed ? "DESTROYED" : m.is_online ? "Disconnect" : "Connect"}
                 </button>
               </div>
+
+              {/* Grid-Forming Synthetic Inertia Status */}
+              {m.is_grid_forming && !m.is_destroyed && m.is_online && (
+                  <div className="mb-2 px-2 py-0.5 bg-accent-blue/10 border border-accent-blue/30 rounded flex items-center justify-between">
+                      <span className="text-[9px] font-bold uppercase text-accent-blue tracking-tighter">Synthetic Inertia Online</span>
+                      <span className="text-[9px] font-mono text-accent-blue">M=+3.5</span>
+                  </div>
+              )}
 
               <div className="space-y-3">
                 {/* Visual Capacity Bar */}
@@ -211,6 +223,18 @@ export default function BatterySubstation({ batteryGrid, onRefresh }: BatterySub
                             className="bg-accent-amber/10 text-accent-amber text-[10px] uppercase font-bold py-1.5 rounded hover:bg-accent-amber/20 border border-accent-amber/30 transition-all"
                         >
                             Scrap for Materials
+                        </button>
+                    )}
+                    {!m.is_destroyed && m.is_online && (
+                        <button
+                            onClick={() => handleToggleGridForming(m.id)}
+                            className={`text-[10px] uppercase font-bold py-1.5 rounded border transition-all ${
+                                m.is_grid_forming 
+                                ? "bg-accent-blue/20 text-accent-blue border-accent-blue/50 hover:bg-accent-blue/30" 
+                                : "bg-bg-dark text-text-muted border-border-subtle hover:bg-bg-card-hover"
+                            }`}
+                        >
+                            {m.is_grid_forming ? "Disable Grid-Forming" : "Enable Grid-Forming"}
                         </button>
                     )}
                 </div>

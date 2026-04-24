@@ -1,4 +1,4 @@
-from .power_source import PowerSource, SolarPanel, WindTurbine, RTG
+from .power_source import PowerSource, SolarPanel, WindTurbine, RTG, KineticFlywheel
 from .power_load import (
     PowerLoad, LifeSupport, Heater, Lighting,
     ExternalComms, WaterFiltration, ScienceLab, RoverBay, Extractors,

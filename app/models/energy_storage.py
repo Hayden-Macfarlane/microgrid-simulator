@@ -45,6 +45,8 @@ class BatteryModule:
         self.energy_debt: float = 0.0
         self.is_scrapping: bool = False
         self.scrap_progress: int = 0
+        self.is_grid_forming: bool = False
+        self.inertia_constant: float = 0.5  # Synthetic inertia
         
     @property
     def current_soc(self) -> float:
@@ -71,7 +73,7 @@ class BatteryModule:
         
     @property
     def max_discharge_rate(self) -> float:
-        """Discharge rate is limited by thermal throttling and cold soak."""
+        """Discharge rate is limited by thermal throttling, cold soak, and grid-forming reservation."""
         rate = self.base_max_discharge_rate
         
         # Thermal Throttling (High Heat)
@@ -83,7 +85,11 @@ class BatteryModule:
             multiplier = max(0.4, 1.0 - ((5.0 - self.internal_temperature) * 0.05))
             rate *= multiplier
             
-        return rate
+        # Grid-Forming Reservation: 15% of base capacity reserved for sub-tick stabilization
+        if self.is_grid_forming:
+            rate -= (self.base_max_discharge_rate * 0.15)
+            
+        return max(0.0, rate)
 
     def to_dict(self) -> dict:
         return {
@@ -105,6 +111,8 @@ class BatteryModule:
             "energy_debt": round(self.energy_debt, 4),
             "is_scrapping": self.is_scrapping,
             "scrap_progress": self.scrap_progress,
+            "is_grid_forming": self.is_grid_forming,
+            "inertia_constant": 4.0 if self.is_grid_forming else 0.5,
         }
 
     def tick(self, env_temp: float = 20.0, heating_active: bool = False, cooling_active: bool = False) -> None:
