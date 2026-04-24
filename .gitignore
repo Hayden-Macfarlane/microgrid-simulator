@@ -9,3 +9,4 @@ node_modules/
 # Virtual Environments
 .venv/
 venv/
+.DS_Store
