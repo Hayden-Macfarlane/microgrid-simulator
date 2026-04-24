@@ -95,4 +95,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify(settings),
     }),
+  
+  repairBattery: (id: string) =>
+    request<{ message: string }>("/grid/battery/repair", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
+
+  scrapBattery: (id: string) =>
+    request<{ message: string }>("/grid/battery/scrap", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
+
+  cleanSolar: (id: string) =>
+    request<{ message: string }>("/grid/solar/clean", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
 };

@@ -61,8 +61,12 @@ export default function EnvironmentPanel({ state }: EnvironmentPanelProps) {
           <div className="text-lg font-bold tracking-wide" style={{ color: eventColor }}>
             {state.current_event.toUpperCase()}
           </div>
+          <div className="text-[10px] font-mono uppercase tracking-wider flex items-center gap-1" style={{ color: state.density === "Opaque" ? 'var(--accent-amber)' : state.density === "Dense" ? 'var(--accent-amber)' : 'var(--accent-cyan)' }}>
+              <span className={state.density === "Opaque" ? "animate-pulse" : ""}>●</span> 
+              Density: {state.density.toUpperCase()}
+          </div>
           {state.current_event !== "Clear Skies" && (
-            <div className="text-[10px] font-mono mt-0.5" style={{ color: eventColor }}>
+            <div className="text-[10px] font-mono mt-0.5 text-text-muted">
               Duration est: {state.event_ticks_remaining} ticks
             </div>
           )}

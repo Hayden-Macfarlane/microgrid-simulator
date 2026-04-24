@@ -26,74 +26,121 @@ function SourceRow({ s, environment, onRefresh }: { s: SourceData; environment?:
     onRefresh();
   };
 
+  const handleClean = async () => {
+    try {
+      await api.cleanSolar(s.id);
+      onRefresh();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const isSolar = s.type === "SolarPanel";
+
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-bg-card-hover transition-colors animate-slide-in">
-      {/* Icon */}
-      <span className="text-lg w-7 text-center">{typeIcon[s.type] || "⚡"}</span>
+    <div className="flex flex-col gap-1 px-3 py-2.5 rounded-lg hover:bg-bg-card-hover transition-colors animate-slide-in">
+      <div className="flex items-center gap-3">
+        {/* Icon */}
+        <span className="text-lg w-7 text-center">{typeIcon[s.type] || "⚡"}</span>
 
-      {/* Info */}
-      <div className="flex-1 min-w-0">
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate">{s.name}</span>
+            {!s.is_operational && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-red/20 text-accent-red uppercase">
+                Offline
+              </span>
+            )}
+            {s.is_manually_disabled && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-text-muted/20 text-text-muted uppercase tracking-wider">
+                Override
+              </span>
+            )}
+            {s.is_cleaning && (
+               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-green/20 text-accent-green uppercase tracking-wider animate-pulse">
+                 Cleaning...
+               </span>
+            )}
+            {environment && s.type === "SolarPanel" && environment.solar_efficiency < 0.1 && s.is_operational && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-bg-dark text-text-muted uppercase tracking-wider border border-border-subtle">
+                Night Mode (0%)
+              </span>
+            )}
+            {environment && s.type === "SolarPanel" && environment.current_event === "Dust Storm" && s.is_operational && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-amber/20 text-accent-amber uppercase tracking-wider">
+                Dust Storm (x0.1)
+              </span>
+            )}
+            {environment && s.type === "WindTurbine" && environment.current_event === "Dust Storm" && s.is_operational && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-amber/20 text-accent-amber uppercase tracking-wider">
+                Dust Storm (x1.5)
+              </span>
+            )}
+            {environment && s.type === "WindTurbine" && environment.current_event === "High Winds" && s.is_operational && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-red/20 text-accent-red uppercase tracking-wider">
+                High Winds (x2.0)
+              </span>
+            )}
+          </div>
+          {/* Output bar */}
+          <div className="mt-1 h-1.5 rounded-full bg-border-subtle overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-700 ease-out"
+              style={{
+                width: `${Math.min(pct, 100)}%`,
+                background: (s.is_operational && !s.is_manually_disabled)
+                  ? "linear-gradient(90deg, #22d3ee, #60a5fa)"
+                  : "#475569",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Actions */}
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium truncate">{s.name}</span>
-          {!s.is_operational && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-red/20 text-accent-red uppercase">
-              Offline
-            </span>
-          )}
-          {s.is_manually_disabled && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-text-muted/20 text-text-muted uppercase tracking-wider">
-              Override
-            </span>
-          )}
-          {environment && s.type === "SolarPanel" && environment.solar_efficiency < 0.1 && s.is_operational && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-bg-dark text-text-muted uppercase tracking-wider border border-border-subtle">
-              Night Mode (0%)
-            </span>
-          )}
-          {environment && s.type === "SolarPanel" && environment.current_event === "Dust Storm" && s.is_operational && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-amber/20 text-accent-amber uppercase tracking-wider">
-              Dust Storm (x0.1)
-            </span>
-          )}
-          {environment && s.type === "WindTurbine" && environment.current_event === "Dust Storm" && s.is_operational && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-amber/20 text-accent-amber uppercase tracking-wider">
-              Dust Storm (x1.5)
-            </span>
-          )}
-          {environment && s.type === "WindTurbine" && environment.current_event === "High Winds" && s.is_operational && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-red/20 text-accent-red uppercase tracking-wider">
-              High Winds (x2.0)
-            </span>
-          )}
+            {isSolar && s.dust_coverage !== undefined && s.dust_coverage > 0 && !s.is_cleaning && (
+                <button
+                    onClick={handleClean}
+                    title="Clean accumulated dust"
+                    className="px-2 py-1 text-[10px] uppercase font-bold rounded bg-accent-green/10 text-accent-green border border-accent-green/30 hover:bg-accent-green/20 transition-all"
+                >
+                    Clean
+                </button>
+            )}
+            <button
+                onClick={handleToggle}
+                className={`px-2 py-1 flex-shrink-0 text-[10px] uppercase font-bold rounded ${
+                s.is_manually_disabled ? "bg-accent-blue/20 text-accent-cyan" : "bg-bg-dark text-text-muted border border-border-subtle"
+                } hover:bg-accent-blue/30 transition-colors`}
+            >
+                {s.is_manually_disabled ? "Resume" : "Halt"}
+            </button>
         </div>
-        {/* Output bar */}
-        <div className="mt-1 h-1.5 rounded-full bg-border-subtle overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-700 ease-out"
-            style={{
-              width: `${Math.min(pct, 100)}%`,
-              background: (s.is_operational && !s.is_manually_disabled)
-                ? "linear-gradient(90deg, #22d3ee, #60a5fa)"
-                : "#475569",
-            }}
-          />
-        </div>
+
+        {/* Value */}
+        <span className="font-mono text-sm text-accent-cyan whitespace-nowrap min-w-[3.5rem] text-right">
+          {s.current_output_kw.toFixed(1)}
+        </span>
       </div>
-
-      {/* Toggle */}
-      <button
-        onClick={handleToggle}
-        className={`px-2 py-1 flex-shrink-0 text-[10px] uppercase font-bold rounded ${
-          s.is_manually_disabled ? "bg-accent-blue/20 text-accent-cyan" : "bg-bg-dark text-text-muted border border-border-subtle"
-        } hover:bg-accent-blue/30 transition-colors`}
-      >
-        {s.is_manually_disabled ? "Resume" : "Halt"}
-      </button>
-
-      {/* Value */}
-      <span className="font-mono text-sm text-accent-cyan whitespace-nowrap min-w-[3.5rem] text-right">
-        {s.current_output_kw.toFixed(1)}
-      </span>
+      
+      {/* Dust Coverage Footer for Solar */}
+      {isSolar && s.dust_coverage !== undefined && (
+          <div className="flex justify-between items-center ml-10 mr-16">
+              <span className="text-[9px] uppercase font-mono text-text-muted/60">Surface Contamination</span>
+              <div className="flex items-center gap-2 flex-1 mx-3">
+                  <div className="h-1 flex-1 bg-bg-dark rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-accent-amber/50" 
+                        style={{ width: `${s.dust_coverage}%` }}
+                      />
+                  </div>
+                  <span className={`text-[10px] font-mono ${s.dust_coverage > 50 ? 'text-accent-amber' : 'text-text-muted'}`}>
+                      {s.dust_coverage.toFixed(2)}%
+                  </span>
+              </div>
+          </div>
+      )}
     </div>
   );
 }

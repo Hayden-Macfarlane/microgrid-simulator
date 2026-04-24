@@ -44,6 +44,8 @@ class GridController:
         self.ticks_fully_powered_essentials: int = 0
         self._shed_log: list[dict] = []
         self._current_env_state = self.env_engine.state
+        self._last_line_loss: float = 0.0
+        self.material_credits: float = 0.0
 
     # ------------------------------------------------------------------
     # Simulation loop
@@ -51,28 +53,49 @@ class GridController:
 
     def tick(self) -> dict:
         """Advance the simulation by one minute. Returns the new state."""
-        self.current_tick += 1
-        self.total_ticks += 1
+        # 1. Sync global SOC settings to battery modules
+        if self.settings:
+            for m in self.battery_grid.modules:
+                m.user_soc_min = self.settings.user_soc_min
+                m.user_soc_max = self.settings.user_soc_max
 
-        # 1. Fault injection
+        # 2. Fault injection
         new_faults = self.fault_injector.inject(
             self.current_tick, self.sources, self.loads, self.battery_grid,
         )
 
-        # 2. Update environment
+        self.current_tick += 1
+        self.total_ticks += 1
+
         self._current_env_state = self.env_engine.tick(self.current_tick)
 
-        # 3. Update every source and load with env state
+        # 3. Identify maintenance projects and calculate extra load
+        hub = next((l for l in self.loads if l.id == 'l9'), None)
+        active_maint_draw = 0.0
+        
+        scrapping_batteries = [m for m in self.battery_grid.modules if m.is_scrapping]
+        repairing_batteries = [m for m in self.battery_grid.modules if m.is_repairing]
+        cleaning_panels = [s for s in self.sources if getattr(s, 'is_cleaning', False)]
+
+        if scrapping_batteries:
+            active_maint_draw += 30.0
+        if repairing_batteries:
+            active_maint_draw += 20.0
+        if cleaning_panels:
+            active_maint_draw += 20.0
+
+        # Update every source and load with env state
         for source in self.sources:
             source.update(self.current_tick, self._current_env_state)
         for load in self.loads:
             load.is_grid_throttled = False
             load.update(self.current_tick, self._current_env_state)
+            # Inject maintenance load into Hub
+            if load.id == 'l9' and active_maint_draw > 0:
+                load.current_draw += active_maint_draw
 
         # 3. Energy balance
         total_generation = sum(s.current_output for s in self.sources)
-        
-        # (Battery grid tick moved to end to capture HVAC power state)
         
         # Calculate essential baseline
         essential_demand = sum(l.current_draw for l in self.loads if l.is_active and getattr(l, 'is_essential', False))
@@ -112,24 +135,70 @@ class GridController:
                     load.is_grid_throttled = True
         else:
             # NORMAL MODE: Run non-essentials at 100% capacity
-            # (already set by load.update() above)
             pass
 
-        # 4. Energy balance (Battery as Buffer)
+        # 4. Energy balance (Battery as Buffer with Inverter Loss)
         total_demand = sum(l.current_draw for l in self.loads if getattr(l, "is_active", False))
-        net_power = total_generation - total_demand
+        
+        # --- TRANSMISSION LINE LOSS ---
+        bus_flow = total_generation
+        line_loss = 0.0
+        if bus_flow > 500.0:
+            line_loss = 0.0001 * (bus_flow - 500.0)**2
+        
+        self._last_line_loss = line_loss
+        net_power = total_generation - total_demand - line_loss
+
+        # 5. Process Maintenance Progress (Only if Hub is receiving full power)
+        hub_is_powered = False
+        if hub and hub.is_active:
+            # Check if hub is receiving its requested power (baseline + maintenance)
+            if hub.current_draw >= (hub.max_draw + active_maint_draw) * 0.98:
+                hub_is_powered = True
+
+        if hub_is_powered:
+            # Process Scrap (50 ticks)
+            for m in scrapping_batteries:
+                m.scrap_progress += 1
+                if m.scrap_progress >= 50:
+                    self.battery_grid.modules.remove(m)
+                    self.material_credits += 50.0  # One-time material credit
+            
+            # Process Cleaning (Immediate)
+            for s in cleaning_panels:
+                if hasattr(s, 'dust_coverage'):
+                    s.dust_coverage = 0.0
+                if hasattr(s, 'is_cleaning'):
+                    s.is_cleaning = False
+            
+            # Process Repair (Energy Debt)
+            # 20kW tool = 0.333 kWh per minute tick
+            repair_rate = 20.0 / 60.0
+            for m in repairing_batteries:
+                m.energy_debt = max(0.0, m.energy_debt - repair_rate)
+                if m.energy_debt <= 0:
+                    m.health_percentage = 100.0
+                    m.is_repairing = False
+                    m.is_destroyed = False
+                    m.is_online = True
 
         energy_stored = 0.0
         energy_discharged = 0.0
         remaining_deficit = 0.0
 
+        INVERTER_EFFICIENCY = 0.94
+
         if net_power >= 0:
-            # Excess power → charge battery
-            energy_stored = self.battery_grid.charge(net_power)
+            # Excess power → charge battery (Inverter Loss during AC->DC)
+            # Battery receives net_power * 0.94
+            energy_stored = self.battery_grid.charge(net_power * INVERTER_EFFICIENCY)
         else:
-            # Deficit → Drain battery buffer
+            # Deficit → Drain battery buffer (Inverter Loss during DC->AC)
             deficit = abs(net_power)
-            energy_discharged = self.battery_grid.discharge(deficit)
+            # To provide 'deficit' to the grid, we must pull 'deficit / 0.94' from cells
+            raw_discharged = self.battery_grid.discharge(deficit / INVERTER_EFFICIENCY)
+            # What actually reaches the grid is the AC-converted power
+            energy_discharged = raw_discharged * INVERTER_EFFICIENCY
             remaining_deficit = deficit - energy_discharged
 
             # 5. Last Resort Shedding (Blackout / Grid Redline)
@@ -242,9 +311,11 @@ class GridController:
             "total_generation_kw": round(total_generation, 4),
             "total_demand_kw": round(total_demand, 4),
             "net_power_kw": round(total_generation - total_demand, 4),
+            "transmission_loss_kw": round(float(getattr(self, '_last_line_loss', 0.0)), 4),
             "sources": [s.to_dict() for s in self.sources],
             "loads": [l.to_dict() for l in self.loads],
             "battery_grid": self.battery_grid.to_dict(),
             "faults": self.fault_injector.to_dict(),
             "shed_log": self._shed_log,
+            "material_credits": round(self.material_credits, 2),
         }

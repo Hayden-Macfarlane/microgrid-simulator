@@ -9,6 +9,8 @@ export interface SourceData {
   is_operational: boolean;
   repair_ticks_remaining: number;
   is_manually_disabled: boolean;
+  dust_coverage?: number;
+  is_cleaning?: boolean;
 }
 
 export interface LoadData {
@@ -34,6 +36,14 @@ export interface BatteryModuleData {
   health_percentage: number;
   temperature: number;
   is_online: boolean;
+  effective_max_capacity: number;
+  is_destroyed: boolean;
+  user_soc_min: number;
+  user_soc_max: number;
+  is_repairing: boolean;
+  energy_debt: number;
+  is_scrapping: boolean;
+  scrap_progress: number;
 }
 
 export interface BatteryGridData {
@@ -84,6 +94,8 @@ export interface SimulationSettings {
   max_repair_ticks: number;
   shed_threshold: number;
   throttle_threshold: number;
+  user_soc_min: number;
+  user_soc_max: number;
 }
 
 export interface GridState {
@@ -100,4 +112,5 @@ export interface GridState {
   shed_log: ShedEvent[];
   settings: SimulationSettings;
   environment: EnvironmentState;
+  material_credits: number;
 }

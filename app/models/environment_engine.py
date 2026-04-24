@@ -18,6 +18,7 @@ class EnvironmentState:
     event_ticks_remaining: int = 0
     current_temperature: float = 20.0
     ambient_temperature: float = 20.0
+    density: str = "Scattered"
 
 class EnvironmentEngine:
     """Manages global environmental factors like time of day and weather events."""
@@ -73,7 +74,7 @@ class EnvironmentEngine:
 
         # Apply Weather Overrides
         if self.state.current_event == "Dust Storm":
-            self.state.solar_efficiency = 0.1
+            self.state.solar_efficiency *= 0.1
             self.state.wind_efficiency = 1.5
             self.state.heater_demand *= 1.2
         elif self.state.current_event == "Cold Snap":
@@ -81,5 +82,13 @@ class EnvironmentEngine:
             self.state.life_support_demand *= 3.0
         elif self.state.current_event == "High Winds":
             self.state.wind_efficiency = 2.0
+            self.state.density = "Dense"
+
+        if self.state.current_event == "Clear Skies":
+            self.state.density = "Scattered"
+        elif self.state.current_event == "Dust Storm":
+            self.state.density = "Opaque"
+        elif self.state.density != "Dense": # Default for other events if not set
+            self.state.density = "Dense"
 
         return self.state

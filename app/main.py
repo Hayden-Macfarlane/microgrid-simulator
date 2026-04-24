@@ -15,6 +15,7 @@ from app.models import (
     SolarPanel, WindTurbine, RTG,
     LifeSupport, Heater, Lighting,
     ExternalComms, WaterFiltration, ScienceLab, RoverBay, Extractors,
+    EngineeringFabricationHub,
     ActiveHeating, ActiveCooling, StaticLoad,
     BatteryGrid, BatteryModule, FaultInjector,
 )
@@ -29,6 +30,7 @@ class AddSourceRequest(BaseModel):
     type: str          # "SolarPanel", "WindTurbine", "RTG"
     name: str
     max_output: float
+    dust_coverage: Optional[float] = 0.0
 
 class AddLoadRequest(BaseModel):
     type: str          # "LifeSupport", "Heater", "Lighting"
@@ -49,6 +51,12 @@ class SettingsUpdateRequest(BaseModel):
     max_repair_ticks: int
     shed_threshold: float
     throttle_threshold: float
+    user_soc_min: float
+    user_soc_min: float
+    user_soc_max: float
+
+class IdRequest(BaseModel):
+    id: str
 
 # -----------------------------------------------------------------------
 # Bootstrap the simulation
@@ -101,6 +109,7 @@ def reset_grid():
             ScienceLab(id="l6", name="Science Lab", max_draw=25.0),
             RoverBay(id="l7", name="Rover Charging Bay", max_draw=40.0),
             Extractors(id="l8", name="Resource Extractors", max_draw=55.0),
+            EngineeringFabricationHub(id="l9", name="Engineering & Maintenance Hub", max_draw=10.0),
             ActiveHeating(id="h1", name="Active Heating", max_draw=25.0),
             ActiveCooling(id="c1", name="Active Cooling", max_draw=25.0),
         ]
@@ -227,6 +236,7 @@ LOAD_CLASSES = {
     "ScienceLab": ScienceLab,
     "RoverBay": RoverBay,
     "Extractors": Extractors,
+    "EngineeringFabricationHub": EngineeringFabricationHub,
     "ActiveHeating": ActiveHeating,
     "ActiveCooling": ActiveCooling,
     "StaticLoad": StaticLoad,
@@ -271,6 +281,8 @@ def update_settings(req: SettingsUpdateRequest):
     settings.max_repair_ticks = req.max_repair_ticks
     settings.shed_threshold = req.shed_threshold
     settings.throttle_threshold = req.throttle_threshold
+    settings.user_soc_min = req.user_soc_min
+    settings.user_soc_max = req.user_soc_max
     return {"message": "Settings updated", "settings": settings.to_dict()}
 
 @app.post("/grid/source/{source_id}/toggle", summary="Toggle manual override for a source")
@@ -344,3 +356,57 @@ async def toggle_auto_tick():
 @app.get("/grid/auto-tick/status", summary="Check auto-tick status")
 def auto_tick_status():
     return {"auto_tick": auto_tick_running}
+
+
+# -----------------------------------------------------------------------
+# Phase 2 Maintenance Endpoints
+# -----------------------------------------------------------------------
+
+@app.post("/grid/battery/repair", summary="Submit repair request for a damaged battery")
+def repair_battery(req: IdRequest):
+    """Marks a battery for repair and calculates its initial energy debt."""
+    module = next((m for m in grid.battery_grid.modules if m.id == req.id), None)
+    if not module:
+        raise HTTPException(status_code=404, detail="Battery module not found.")
+    
+    if module.is_destroyed:
+        raise HTTPException(status_code=400, detail="Destroyed modules cannot be repaired. Use Scrap instead.")
+    
+    if module.health_percentage >= 100.0:
+        return {"message": "Battery is already at 100% health."}
+
+    # Energy Debt: 5 kWh for every 1% of missing health
+    module.energy_debt = (100.0 - module.health_percentage) * 5.0
+    module.is_repairing = True
+    module.is_scrapping = False
+    return {"message": f"Repair request submitted for {module.name}. Energy Debt: {module.energy_debt} kWh."}
+
+
+@app.post("/grid/battery/scrap", summary="Scrap a destroyed battery")
+def scrap_battery(req: IdRequest):
+    """Marks a destroyed battery for decommissioning/scrapping."""
+    module = next((m for m in grid.battery_grid.modules if m.id == req.id), None)
+    if not module:
+        raise HTTPException(status_code=404, detail="Battery module not found.")
+    
+    if not module.is_destroyed:
+        raise HTTPException(status_code=400, detail="Only destroyed modules can be scrapped.")
+
+    module.is_scrapping = True
+    module.is_repairing = False
+    module.scrap_progress = 0
+    return {"message": f"Scrap operation started for {module.name}. 50 ticks remaining."}
+
+
+@app.post("/grid/solar/clean", summary="Schedule panel cleaning")
+def clean_solar(req: IdRequest):
+    """Marks a solar array for cleaning."""
+    source = next((s for s in grid.sources if s.id == req.id), None)
+    if not source:
+        raise HTTPException(status_code=404, detail="Solar source not found.")
+    
+    if not isinstance(source, SolarPanel):
+        raise HTTPException(status_code=400, detail="Only solar panels can be cleaned.")
+
+    source.is_cleaning = True
+    return {"message": f"Cleaning scheduled for {source.name}."}

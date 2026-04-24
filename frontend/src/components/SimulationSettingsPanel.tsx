@@ -167,6 +167,44 @@ export default function SimulationSettingsPanel({
             className="accent-accent-purple w-full cursor-pointer"
           />
         </div>
+
+        {/* Target SOC Min */}
+        <div className="flex flex-col gap-2">
+          <label className="text-xs text-text-muted font-mono flex justify-between">
+            <span>Target Min SOC</span>
+            <span className={local.user_soc_min < 20 ? "text-accent-red animate-pulse font-bold" : "text-accent-purple"}>
+              {local.user_soc_min}% {local.user_soc_min < 20 && "⚠️ DEGRADATION!"}
+            </span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="50"
+            step="1"
+            value={local.user_soc_min}
+            onChange={(e) => update("user_soc_min", parseInt(e.target.value))}
+            className={`w-full cursor-pointer ${local.user_soc_min < 20 ? "accent-accent-red" : "accent-accent-purple"}`}
+          />
+        </div>
+
+        {/* Target SOC Max */}
+        <div className="flex flex-col gap-2">
+          <label className="text-xs text-text-muted font-mono flex justify-between">
+            <span>Target Max SOC</span>
+            <span className={local.user_soc_max > 80 ? "text-accent-red animate-pulse font-bold" : "text-accent-purple"}>
+              {local.user_soc_max}% {local.user_soc_max > 80 && "⚠️ DEGRADATION!"}
+            </span>
+          </label>
+          <input
+            type="range"
+            min="50"
+            max="100"
+            step="1"
+            value={local.user_soc_max}
+            onChange={(e) => update("user_soc_max", parseInt(e.target.value))}
+            className={`w-full cursor-pointer ${local.user_soc_max > 80 ? "accent-accent-red" : "accent-accent-purple"}`}
+          />
+        </div>
       </div>
     </section>
   );

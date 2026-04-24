@@ -12,6 +12,8 @@ class SimulationSettings:
     max_repair_ticks: int = 15
     shed_threshold: float = 0.10
     throttle_threshold: float = 0.20
+    user_soc_min: float = 20.0
+    user_soc_max: float = 80.0
 
     def to_dict(self) -> dict:
         return {
@@ -21,4 +23,6 @@ class SimulationSettings:
             "max_repair_ticks": self.max_repair_ticks,
             "shed_threshold": self.shed_threshold,
             "throttle_threshold": self.throttle_threshold,
+            "user_soc_min": self.user_soc_min,
+            "user_soc_max": self.user_soc_max,
         }

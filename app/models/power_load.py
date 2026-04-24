@@ -320,3 +320,25 @@ class StaticLoad(PowerLoad):
         self.max_draw = self._base_draw
         self.current_draw = self.max_draw * random.uniform(0.95, 1.05)
 
+
+class EngineeringFabricationHub(PowerLoad):
+    """
+    Standby power for diagnostic computers, fabrication tools, and environmental control.
+    """
+    def __init__(self, name: str = "Engineering & Maintenance Hub", max_draw: float = 10.0, id: str = None) -> None:
+        super().__init__(name, max_draw, is_essential=True, id=id)
+        self._base_draw = max_draw
+
+    def update(self, tick: int, env: 'EnvironmentState') -> None:
+        if self.repair_ticks_remaining > 0:
+            self.repair_ticks_remaining -= 1
+            if self.repair_ticks_remaining == 0:
+                self.is_active = True
+                
+        if not self.is_active or self.is_manually_disabled:
+            self.current_draw = 0.0
+            return
+            
+        self.max_draw = self._base_draw
+        self.current_draw = self.max_draw * random.uniform(0.98, 1.02) # Very stable load
+

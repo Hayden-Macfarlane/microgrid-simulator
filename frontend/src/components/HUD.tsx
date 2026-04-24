@@ -272,6 +272,16 @@ export default function HUD({ state, history }: HUDProps) {
                {alertsCount > 0 ? "System Integrity Compromised" : "All Systems Nominal"}
              </p>
           </StatCard>
+          <StatCard
+            label="Material Credits"
+            value={state.material_credits.toFixed(0)}
+            unit="credits"
+            accent="var(--accent-amber)"
+          >
+              <p className="text-[10px] text-text-muted font-mono uppercase">
+                Reclaimed Resources
+              </p>
+          </StatCard>
         </div>
       </div>
 

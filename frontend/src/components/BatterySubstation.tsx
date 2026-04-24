@@ -16,6 +16,25 @@ export default function BatterySubstation({ batteryGrid, onRefresh }: BatterySub
     onRefresh();
   };
 
+  const handleRepair = async (id: string) => {
+    try {
+      await api.repairBattery(id);
+      onRefresh();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleScrap = async (id: string) => {
+    if (!confirm("Are you sure you want to scrap this battery? It will be permanently removed after 50 ticks.")) return;
+    try {
+      await api.scrapBattery(id);
+      onRefresh();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   return (
     <section className="space-y-4 animate-fade-in mt-8">
       <div className="flex items-center justify-between">
@@ -34,23 +53,46 @@ export default function BatterySubstation({ batteryGrid, onRefresh }: BatterySub
         {batteryGrid.modules.map((m: BatteryModuleData) => {
           const isHot = m.temperature > 40;
           const isThrottleActive = m.temperature > 50;
-          const bgStatus = !m.is_online
+          const isFrozen = m.temperature < 5.0;
+          const isFreezeDamaging = m.temperature < 0.0;
+          
+          const bgStatus = m.is_destroyed
+            ? "border-accent-red grayscale opacity-75"
+            : !m.is_online
             ? "border-bg-dark bg-bg-card-hover opacity-75"
             : isThrottleActive
             ? "border-accent-amber/50 bg-bg-card-hover"
             : "border-border-subtle bg-bg-card";
 
-          // Capacity width purely relative to its own baseline vs current max
-          const chargePct = m.max_capacity_kwh > 0 ? (m.current_charge_kwh / m.max_capacity_kwh) * 100 : 0;
+          // Capacity calculation
+          const totalMax = m.max_capacity_kwh;
+          const effectiveMax = m.effective_max_capacity;
+          const current = m.current_charge_kwh;
+          
+          const chargePct = totalMax > 0 ? (current / totalMax) * 100 : 0;
+          const gapPct = totalMax > 0 ? ((totalMax - effectiveMax) / totalMax) * 100 : 0;
+          const usableEmptyPct = totalMax > 0 ? ((effectiveMax - current) / totalMax) * 100 : 0;
+
+          const repairPct = m.is_repairing ? Math.max(0, 100 - (m.energy_debt / ((100 - m.health_percentage) * 5.0)) * 100) : 0;
+          const scrapPct = m.is_scrapping ? (m.scrap_progress / 50) * 100 : 0;
+
+          // Tooltip logic
+          let healthTooltip = "Battery Health";
+          if (isFreezeDamaging) healthTooltip = "❄️ PHYSICAL DAMAGE: FREEZING";
+          else if (isHot) healthTooltip = "🔥 CATASTROPHIC FAILURE: THERMAL RUNAWAY";
+          else if (current < (totalMax * (m.user_soc_min/100)) || current > (totalMax * (m.user_soc_max/100))) {
+              healthTooltip = "⚡ CHEMICAL STRAIN: OPERATING OUTSIDE SAFE SOC";
+          }
 
           return (
-            <div key={m.id} className={`card p-4 transition-all border ${bgStatus}`}>
+            <div key={m.id} className={`card p-4 transition-all border ${bgStatus} relative group overflow-hidden`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">🔋</span>
+                  <span className="text-xl">{m.is_destroyed ? "💀" : "🔋"}</span>
                   <h3 className="text-sm font-semibold truncate max-w-[150px]">{m.name}</h3>
                 </div>
                 <button
+                  disabled={m.is_scrapping}
                   onClick={() => handleToggle(m.id)}
                   className={`px-2 py-1 text-[10px] uppercase font-bold rounded flex-shrink-0 transition-colors ${
                     m.is_online
@@ -58,35 +100,80 @@ export default function BatterySubstation({ batteryGrid, onRefresh }: BatterySub
                       : "bg-accent-red/20 text-accent-red hover:bg-accent-red/30"
                   }`}
                 >
-                  {m.is_online ? "Disconnect" : "Connect"}
+                  {m.is_destroyed ? "DESTROYED" : m.is_online ? "Disconnect" : "Connect"}
                 </button>
               </div>
 
               <div className="space-y-3">
                 {/* Visual Capacity Bar */}
-                <div>
-                  <div className="flex justify-between text-[11px] font-mono text-text-muted mb-1">
-                    <span>{m.current_charge_kwh.toFixed(1)} kWh</span>
-                    <span>{m.max_capacity_kwh.toFixed(1)} kWh</span>
+                {m.is_scrapping ? (
+                    <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] uppercase font-bold text-accent-amber">
+                            <span>Scrapping Module...</span>
+                            <span>{m.scrap_progress}/50 Ticks</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-bg-dark rounded-full overflow-hidden">
+                            <div className="h-full bg-accent-amber transition-all duration-300" style={{ width: `${scrapPct}%` }} />
+                        </div>
+                    </div>
+                ) : m.is_repairing ? (
+                    <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] uppercase font-bold text-accent-green">
+                            <span>Repairing...</span>
+                            <span>{m.energy_debt.toFixed(1)} kWh Left</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-bg-dark rounded-full overflow-hidden">
+                            <div className="h-full bg-accent-green transition-all duration-300" style={{ width: `${repairPct}%` }} />
+                        </div>
+                    </div>
+                ) : m.is_destroyed ? (
+                  <div className="bg-accent-red/10 border border-accent-red/30 rounded p-2 text-center">
+                    <span className="text-[10px] text-accent-red font-bold animate-pulse tracking-tighter">
+                      SUBSTATION CRITICAL: PERMANENT FAILURE
+                    </span>
                   </div>
-                  <div className="h-2 rounded-full overflow-hidden bg-bg-dark relative">
-                    <div
-                      className={`h-full transition-all duration-700 ease-out`}
-                      style={{
-                        width: `${Math.min(chargePct, 100)}%`,
-                        background: m.is_online
-                          ? "linear-gradient(90deg, #10b981, #34d399)"
-                          : "#475569",
-                      }}
-                    />
+                ) : (
+                  <div>
+                    <div className="flex justify-between text-[11px] font-mono text-text-muted mb-1">
+                      <span className="flex items-center gap-1">
+                        {current.toFixed(1)} kWh {isFrozen && <span className="text-accent-blue animate-pulse">❄️</span>}
+                      </span>
+                      <span>{effectiveMax.toFixed(1)} kWh</span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden bg-bg-dark flex relative">
+                      <div
+                        className={`h-full transition-all duration-700 ease-out`}
+                        style={{
+                          width: `${chargePct}%`,
+                          background: m.is_online
+                            ? "linear-gradient(90deg, #10b981, #34d399)"
+                            : "#475569",
+                        }}
+                      />
+                      {/* Usable Empty Space */}
+                      <div style={{ width: `${usableEmptyPct}%` }} />
+                      {/* Cold Soak Gap (Hatched) */}
+                      {gapPct > 0 && (
+                        <div
+                          className="h-full"
+                          style={{
+                            width: `${gapPct}%`,
+                            background: "repeating-linear-gradient(45deg, #1e293b, #1e293b 5px, #334155 5px, #334155 10px)",
+                          }}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Grid stats */}
                 <div className="grid grid-cols-2 gap-2 text-[11px] font-mono border-t border-border-subtle pt-2">
                   <div className="flex justify-between">
                     <span className="text-text-muted/70">Health</span>
-                    <span className={m.health_percentage < 80 ? "text-accent-red font-bold" : "text-text-muted"}>
+                    <span 
+                      title={healthTooltip}
+                      className={m.health_percentage < 80 ? "text-accent-red font-bold cursor-help" : "text-text-muted cursor-help"}
+                    >
                       {m.health_percentage.toFixed(0)}%
                     </span>
                   </div>
@@ -106,6 +193,26 @@ export default function BatterySubstation({ batteryGrid, onRefresh }: BatterySub
                       {m.max_discharge_rate_kw.toFixed(0)} kW
                     </span>
                   </div>
+                </div>
+
+                {/* Maintenance Actions */}
+                <div className="grid grid-cols-1 gap-2 pt-1">
+                    {!m.is_repairing && !m.is_destroyed && m.health_percentage < 100 && (
+                        <button
+                            onClick={() => handleRepair(m.id)}
+                            className="bg-accent-green/10 text-accent-green text-[10px] uppercase font-bold py-1.5 rounded hover:bg-accent-green/20 border border-accent-green/30 transition-all"
+                        >
+                            Start Repair Cycle
+                        </button>
+                    )}
+                    {m.is_destroyed && !m.is_scrapping && (
+                        <button
+                            onClick={() => handleScrap(m.id)}
+                            className="bg-accent-amber/10 text-accent-amber text-[10px] uppercase font-bold py-1.5 rounded hover:bg-accent-amber/20 border border-accent-amber/30 transition-all"
+                        >
+                            Scrap for Materials
+                        </button>
+                    )}
                 </div>
               </div>
             </div>

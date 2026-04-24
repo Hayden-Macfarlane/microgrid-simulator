@@ -30,7 +30,7 @@ class PowerSource(ABC):
         """Recalculate current_output for the given simulation tick."""
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "id": self.id,
             "name": self.name,
             "type": self.__class__.__name__,
@@ -40,6 +40,11 @@ class PowerSource(ABC):
             "repair_ticks_remaining": self.repair_ticks_remaining,
             "is_manually_disabled": self.is_manually_disabled,
         }
+        if hasattr(self, 'dust_coverage'):
+            d["dust_coverage"] = round(self.dust_coverage, 4)
+        if hasattr(self, 'is_cleaning'):
+            d["is_cleaning"] = self.is_cleaning
+        return d
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +61,13 @@ class SolarPanel(PowerSource):
 
     def __init__(self, name: str = "Solar Array", max_output: float = 50.0, id: str = None) -> None:
         super().__init__(name, max_output, id=id)
+        self.dust_coverage: float = 0.0  # 0.0 to 100.0
+        self.is_cleaning: bool = False
+
+    def degrade_solar_efficiency(self, is_storm: bool = False) -> None:
+        """Increases dust coverage. Base rate 0.01% per tick, 10x during storm."""
+        rate = 0.1 if is_storm else 0.01
+        self.dust_coverage = min(100.0, self.dust_coverage + rate)
 
     def update(self, tick: int, env: 'EnvironmentState') -> None:
         if self.repair_ticks_remaining > 0:
@@ -67,9 +79,14 @@ class SolarPanel(PowerSource):
             self.current_output = 0.0
             return
             
+        # Accumulate dust and calculate degradation
+        is_storm = (env.current_event == "Dust Storm")
+        self.degrade_solar_efficiency(is_storm=is_storm)
+        dust_factor = (1.0 - (self.dust_coverage / 100.0))
+            
         # Add slight random cloud cover (±10%)
         noise = random.uniform(0.90, 1.10)
-        self.current_output = self.max_output * env.solar_efficiency * noise
+        self.current_output = self.max_output * env.solar_efficiency * noise * dust_factor
 
 
 class WindTurbine(PowerSource):
