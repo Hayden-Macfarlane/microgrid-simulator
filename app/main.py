@@ -6,8 +6,8 @@ Provides REST endpoints to inspect and advance the simulation.
 import asyncio
 import logging
 import traceback
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, Field
+from typing import Optional, List, Literal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -37,8 +37,10 @@ class AddSourceRequest(BaseModel):
 class AddLoadRequest(BaseModel):
     type: str          # "LifeSupport", "Heater", "Lighting"
     name: str
-    max_draw: float
+    max_draw: float = Field(..., ge=0.0)
     is_essential: bool = False
+    variance_percentage: float = Field(default=0.0, ge=0.0)
+    schedule_type: Literal["flat", "day_heavy", "night_heavy", "spiky"] = "flat"
 
 class AddBatteryModuleRequest(BaseModel):
     name: str
@@ -138,12 +140,12 @@ def reset_grid():
         ]
 
         loads = [
-            LifeSupport(id="l1", name="Life Support", max_draw=20.0),
-            Heater(id="l2", name="Habitat Heater", max_draw=15.0),
+            LifeSupport(id="l1", name="Life Support", max_draw=20.0, schedule_type="flat", variance_percentage=0.01),
+            Heater(id="l2", name="Habitat Heater", max_draw=15.0, schedule_type="night_heavy", variance_percentage=0.05),
             Lighting(id="l3", name="Interior Lighting", max_draw=5.0),
             ExternalComms(id="l4", name="External Communications", max_draw=8.0),
             WaterFiltration(id="l5", name="Water Filtration", max_draw=12.0),
-            ScienceLab(id="l6", name="Science Lab", max_draw=25.0),
+            ScienceLab(id="l6", name="Science Lab", max_draw=25.0, schedule_type="spiky", variance_percentage=0.25),
             RoverBay(id="l7", name="Rover Charging Bay", max_draw=40.0),
             Extractors(id="l8", name="Resource Extractors", max_draw=55.0),
             EngineeringFabricationHub(id="l9", name="Engineering & Maintenance Hub", max_draw=10.0),
@@ -303,7 +305,12 @@ def add_load(req: AddLoadRequest):
             status_code=400,
             detail=f"Unknown load type '{req.type}'. Choose from: {list(LOAD_CLASSES.keys())}",
         )
-    load = cls(name=req.name, max_draw=req.max_draw)
+    load = cls(
+        name=req.name,
+        max_draw=req.max_draw,
+        variance_percentage=req.variance_percentage,
+        schedule_type=req.schedule_type,
+    )
     # Override is_essential for types that aren't LifeSupport
     if req.type != "LifeSupport":
         load.is_essential = req.is_essential

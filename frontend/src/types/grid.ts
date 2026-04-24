@@ -19,6 +19,8 @@ export interface LoadData {
   type: string;
   max_draw_kw: number;
   current_draw_kw: number;
+  variance_percentage: number;
+  schedule_type: "flat" | "day_heavy" | "night_heavy" | "spiky";
   is_essential: boolean;
   is_active: boolean;
   repair_ticks_remaining: number;

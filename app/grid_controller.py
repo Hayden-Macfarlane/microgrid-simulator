@@ -95,6 +95,8 @@ class GridController:
             # Inject maintenance load into Hub
             if load.id == 'l9' and active_maint_draw > 0:
                 load.current_draw += active_maint_draw
+                if hasattr(load, "_clamp_draw"):
+                    load.current_draw = load._clamp_draw(load.current_draw)
 
         # 3. Energy balance
         total_generation = sum(s.current_output for s in self.sources)

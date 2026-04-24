@@ -162,6 +162,7 @@ function LoadRow({ l, environment, onRefresh }: { l: LoadData; environment?: Env
   };
 
   const pct = l.max_draw_kw > 0 ? (l.current_draw_kw / l.max_draw_kw) * 100 : 0;
+  const isVolatile = l.schedule_type === "spiky" || l.variance_percentage > 0.1;
   
   const isThrottled = l.is_active && !l.is_manually_disabled && l.is_grid_throttled;
   const isShed = l.is_active && !l.is_manually_disabled && l.current_draw_kw === 0;
@@ -234,6 +235,11 @@ function LoadRow({ l, environment, onRefresh }: { l: LoadData; environment?: Env
               Tier {l.ufls_tier}
             </span>
           )}
+          {isVolatile && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent-amber/20 text-accent-amber uppercase tracking-wider">
+              ⚡ Volatile
+            </span>
+          )}
         </div>
         {/* Draw indicator */}
         <div className="mt-1 h-1.5 rounded-full bg-border-subtle overflow-hidden">
@@ -276,7 +282,7 @@ function LoadRow({ l, environment, onRefresh }: { l: LoadData; environment?: Env
 
       {/* Value */}
       <span className="font-mono text-sm text-accent-amber whitespace-nowrap min-w-[3.5rem] text-right">
-        {l.current_draw_kw.toFixed(1)}
+        {l.current_draw_kw.toFixed(1)} kW
       </span>
     </div>
   );

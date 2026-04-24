@@ -54,10 +54,24 @@ export const api = {
       body: JSON.stringify({ type, name, max_output: maxOutput }),
     }),
 
-  addLoad: (type: string, name: string, maxDraw: number, isEssential: boolean) =>
+  addLoad: (
+    type: string,
+    name: string,
+    maxDraw: number,
+    isEssential: boolean,
+    variancePercentage = 0.0,
+    scheduleType: "flat" | "day_heavy" | "night_heavy" | "spiky" = "flat"
+  ) =>
     request("/grid/load", {
       method: "POST",
-      body: JSON.stringify({ type, name, max_draw: maxDraw, is_essential: isEssential }),
+      body: JSON.stringify({
+        type,
+        name,
+        max_draw: maxDraw,
+        is_essential: isEssential,
+        variance_percentage: variancePercentage,
+        schedule_type: scheduleType,
+      }),
     }),
 
   toggleSource: (id: string) =>
