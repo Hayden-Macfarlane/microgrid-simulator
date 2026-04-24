@@ -1,0 +1,51 @@
+# Microgrid Simulator — AI Developer Rules
+
+## Core Development Principles
+- Treat simulation integrity and operator safety as first-order requirements.
+- Prefer explicitness over convenience: explicit models, explicit types, explicit bounds.
+- Reject invalid state transitions early with clear, actionable errors.
+
+## Pydantic Schema Requirements
+- Every request/response payload crossing API boundaries MUST use a dedicated Pydantic model.
+- Do not accept loose `dict` payloads for production endpoints when a schema can be defined.
+- Add field-level validation constraints (`ge`, `le`, `min_length`, enums/literals) for all bounded inputs.
+- Encode units and domain intent in field names and model docstrings (for example: `max_output_kw`, `energy_kwh`).
+- Keep schemas version-safe: adding fields should preserve backward compatibility where possible.
+- Return structured validation errors; never swallow Pydantic validation failures.
+
+## Mathematical Safety Checks (Simulation/Control Logic)
+- Clamp and validate all physically bounded values at boundaries (for example: SoC in [0, 1] or [0, 100], non-negative power/capacity, finite numeric values).
+- Before each state mutation, enforce invariants:
+  - No negative energy/capacity/power unless explicitly modeled as signed flow.
+  - Charge/discharge rates cannot exceed module limits.
+  - Health, degradation, and threshold values must stay inside defined ranges.
+- Guard against numerical hazards:
+  - Division-by-zero protection.
+  - NaN/Inf rejection (`math.isfinite` checks where relevant).
+  - Deterministic handling of precision-sensitive comparisons.
+- When an operation would violate invariants, fail safe:
+  - Reject the operation, keep prior valid state, and emit a clear error.
+  - Never continue with partially corrupted simulation state.
+- Include edge-case handling for large tick counts, extreme inputs, and unavailable resources.
+
+## Strict Typing Policy
+- All new/modified Python code MUST include explicit type hints for:
+  - Function parameters and return values.
+  - Module-level mutable state where practical.
+  - Public class attributes and key internal structures.
+- Prefer concrete, narrow types over broad unions or `Any`.
+- Avoid `Any` unless there is no practical alternative; document every `Any` usage with justification.
+- Keep interfaces typed end-to-end across controller, model, and API layers.
+- If introducing a new data structure, define a typed model/class instead of passing untyped maps.
+
+## API and Error-Handling Standards
+- Use structured HTTP errors for invalid operations; include reason and valid alternatives when applicable.
+- Distinguish validation errors (client/input) from execution errors (server/runtime).
+- Preserve safe fallback behavior when initialization fails; never expose an unusable partial grid.
+
+## Change Quality Checklist (for future agents)
+- Does every new endpoint input/output have an explicit Pydantic schema?
+- Are all numeric operations guarded by domain bounds and finite checks?
+- Are all signatures and core data paths strictly typed?
+- Are invariant violations rejected with safe rollback/fail-safe behavior?
+- Are edge cases covered by tests (or at minimum documented test steps)?
